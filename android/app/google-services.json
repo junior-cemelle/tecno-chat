@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "240912771850",
+    "project_id": "tarea6-clon",
+    "storage_bucket": "tarea6-clon.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:240912771850:android:15bc42cbad63788eda68f3",
+        "android_client_info": {
+          "package_name": "com.example.tarea6_clon"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "240912771850-59qlmbacuq5tm3jifg1bosk0idfnjsir.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.tarea6_clon",
+            "certificate_hash": "2a0d910cb89e2546b8129e47d4a200286c0951e1"
+          }
+        },
+        {
+          "client_id": "240912771850-h4sb4sono5d6hgheq6ddhlqbb0414p5v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDC-bKxKzeKLf_JNEyY2lH7-eOMisJRo48"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "240912771850-h4sb4sono5d6hgheq6ddhlqbb0414p5v.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "240912771850-29b5ahdcea3ovt81pkophg43iksso36j.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.tarea6Clon"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

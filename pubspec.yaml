@@ -1,0 +1,54 @@
+name: tarea6_clon
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  firebase_core: ^4.8.0
+  firebase_auth: ^6.5.0
+  cloud_firestore: ^6.4.0
+  firebase_storage: ^13.4.0
+  firebase_messaging: ^16.2.1
+  google_sign_in: ^7.2.0
+  flutter_riverpod: ^3.3.1
+  go_router: ^17.2.3
+  image_picker: ^1.2.2          # Fotos y videos
+  video_player: ^2.11.1          # Reproducir videos (legacy, reemplazado por media_kit)
+  media_kit: ^1.1.11             # Reproductor con decodificación por software (libmpv)
+  media_kit_video: ^1.1.11       # Widget de video para media_kit
+  media_kit_libs_video: ^1.0.5   # Librerías nativas (FFmpeg + libmpv)
+  video_thumbnail: ^0.5.3        # Extraer primer frame del video
+  record: ^4.4.4                 # Grabación de audio (v4 = API compatible con todas las plataformas)
+  just_audio: ^0.9.40            # Reproducción de audio desde URL
+  path_provider: ^2.1.4          # Directorio temporal para audio grabado
+  emoji_picker_flutter: ^4.4.0  # Selector de emojis
+  cached_network_image: ^3.4.1  # Cache de imágenes
+  agora_rtc_engine: ^6.5.3      # Video llamadas
+  intl: ^0.20.2               # Fechas y formatos
+  flutter_local_notifications: ^21.0.0
+  google_fonts: ^6.2.1
+  font_awesome_flutter: ^10.8.0
+  http: ^1.3.0
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.2.3
+  flutter_svg: ^2.0.17
+  supabase_flutter: ^2.9.1      # Storage para imágenes/video/audio
+  file_picker: ^10.1.9          # Selector de archivos genérico
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - lib/assets/bg_login/
+    - lib/assets/bg_chat/
+    - lib/assets/logos/
