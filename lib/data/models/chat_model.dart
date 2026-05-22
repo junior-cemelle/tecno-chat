@@ -18,7 +18,8 @@ class LastMessage {
   factory LastMessage.fromMap(Map<String, dynamic> m) => LastMessage(
         text: m['text'] ?? '',
         senderId: m['senderId'] ?? '',
-        timestamp: (m['timestamp'] as Timestamp).toDate(),
+        // serverTimestamp() llega null en snapshots de escritura pendiente
+        timestamp: (m['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
         type: m['type'] ?? 'text',
       );
 
