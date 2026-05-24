@@ -8,6 +8,7 @@ import '../../data/models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../core/widgets/qr_dialog.dart';
+import '../../presentation/shell/app_router.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -70,7 +71,7 @@ class _ProfileBody extends ConsumerWidget {
 
   Future<void> _editAvatar(
       BuildContext context, WidgetRef ref, UserModel u) async {
-    final newUrl = await showAvatarUrlDialog(context, u.avatarUrl);
+    final newUrl = await showAvatarUrlDialog(context, u.avatarUrl, u.uid);
     if (newUrl == null) return;
     final updated = UserModel(
       uid: u.uid, phone: u.phone, email: u.email,
@@ -198,15 +199,20 @@ class _ProfileBody extends ConsumerWidget {
         const SizedBox(height: 8),
 
         // ── Cerrar sesión ────────────────────────────────────────────────
-        Container(
+        // Material es necesario para que InkWell/ListTile registre
+        // eventos de mouse en Flutter web (HTML renderer).
+        Material(
           color: surface,
           child: ListTile(
             leading: const Icon(Icons.logout, color: AppColors.error),
             title: const Text('Cerrar sesión',
                 style: TextStyle(color: AppColors.error)),
+            mouseCursor: SystemMouseCursors.click,
             onTap: () async {
               await ref.read(authServiceProvider).signOut();
-              if (context.mounted) context.go('/login');
+              // routerProvider.go() no depende de context.mounted,
+              // evitando el problema de timing en web tras el signOut.
+              ref.read(routerProvider).go('/login');
             },
           ),
         ),

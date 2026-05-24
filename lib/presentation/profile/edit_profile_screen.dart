@@ -85,7 +85,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   }
 
   Future<void> _changeAvatar() async {
-    final url = await showAvatarUrlDialog(context, _avatarUrl);
+    final url = await showAvatarUrlDialog(
+        context, _avatarUrl, _original?.uid ?? '');
     if (url != null && mounted) setState(() => _avatarUrl = url);
   }
 

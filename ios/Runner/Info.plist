@@ -45,5 +45,12 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Permisos de privacidad (Agora + grabación de audios + cámara para chat) -->
+	<key>NSCameraUsageDescription</key>
+	<string>Esta app necesita la cámara para videollamadas y para tomar fotos en los chats.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Esta app necesita el micrófono para llamadas y para grabar mensajes de voz.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Esta app accede a tus fotos para enviarlas en los chats.</string>
 </dict>
 </plist>

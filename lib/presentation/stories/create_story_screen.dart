@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,13 +15,12 @@ class CreateStoryScreen extends ConsumerStatefulWidget {
   const CreateStoryScreen({super.key});
 
   @override
-  ConsumerState<CreateStoryScreen> createState() =>
-      _CreateStoryScreenState();
+  ConsumerState<CreateStoryScreen> createState() => _CreateStoryScreenState();
 }
 
 class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
   final _textCtrl = TextEditingController();
-  File? _image;
+  XFile? _image;
   bool _publishing = false;
   final Set<String> _selectedGroupIds = {};
   final _picker = ImagePicker();
@@ -35,7 +34,7 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
   Future<void> _pickImage() async {
     final xfile = await _picker.pickImage(
         source: ImageSource.gallery, imageQuality: 85, maxWidth: 1080);
-    if (xfile != null) setState(() => _image = File(xfile.path));
+    if (xfile != null) setState(() => _image = xfile);
   }
 
   Future<void> _publish() async {
@@ -55,10 +54,8 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
 
     setState(() => _publishing = true);
     try {
-      // Subir imagen si fue seleccionada
       String? imageUrl;
       String type = 'text';
-      // Usamos un ID temporal para el path; se reemplaza por el storyId real
       final tempId = DateTime.now().millisecondsSinceEpoch.toString();
 
       if (_image != null) {
@@ -119,49 +116,58 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // ── Vista previa ──────────────────────────────────────────────
-          Container(
-            height: 180,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF0D1F35), Color(0xFF1A3A5C)],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              image: _image != null
-                  ? DecorationImage(
-                      image: FileImage(_image!), fit: BoxFit.cover)
-                  : null,
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                if (_image != null)
+          // ── Vista previa ────────────────────────────────────────────────
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: SizedBox(
+              height: 180,
+              child: Stack(
+                fit: StackFit.expand,
+                alignment: Alignment.center,
+                children: [
+                  // Fondo degradado siempre visible
                   Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withAlpha(100),
-                      borderRadius: BorderRadius.circular(16),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF0D1F35), Color(0xFF1A3A5C)],
+                      ),
                     ),
                   ),
-                if (_textCtrl.text.trim().isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      _textCtrl.text,
-                      style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600),
-                      textAlign: TextAlign.center,
+                  // Imagen seleccionada usando bytes (web + móvil)
+                  if (_image != null)
+                    FutureBuilder<Uint8List>(
+                      future: _image!.readAsBytes(),
+                      builder: (_, snap) {
+                        if (!snap.hasData) return const SizedBox.shrink();
+                        return Image.memory(snap.data!,
+                            fit: BoxFit.cover, width: double.infinity);
+                      },
                     ),
-                  )
-                else
-                  Text('Vista previa del aviso',
-                      style: GoogleFonts.poppins(
-                          color: Colors.white.withAlpha(120),
-                          fontSize: 14)),
-              ],
+                  // Overlay oscuro sobre la imagen
+                  if (_image != null)
+                    Container(color: Colors.black.withAlpha(100)),
+                  // Texto de vista previa
+                  if (_textCtrl.text.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        _textCtrl.text,
+                        style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600),
+                        textAlign: TextAlign.center,
+                      ),
+                    )
+                  else
+                    Text('Vista previa del aviso',
+                        style: GoogleFonts.poppins(
+                            color: Colors.white.withAlpha(120),
+                            fontSize: 14)),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -178,7 +184,7 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                   borderRadius: BorderRadius.circular(12)),
               alignLabelWithHint: true,
             ),
-            onChanged: (_) => setState(() {}), // actualiza preview
+            onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 8),
 
@@ -224,7 +230,8 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    'No tienes grupos creados.\nCrea un grupo primero desde la pestaña Grupos.',
+                    'No tienes grupos creados.\n'
+                    'Crea un grupo primero desde la pestaña Grupos.',
                     style: GoogleFonts.poppins(
                         color: cs.onSurface.withAlpha(140), fontSize: 13),
                     textAlign: TextAlign.center,

@@ -6,7 +6,7 @@ import '../../core/widgets/avatar_widget.dart';
 import '../../data/models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/firestore_provider.dart';
-import 'qr_scanner_screen.dart';
+import 'qr_scanner_screen_selector.dart';
 
 /// Abre el bottom sheet para buscar un contacto e iniciar un chat.
 /// Retorna el chatId si se inició una conversación, null si se canceló.

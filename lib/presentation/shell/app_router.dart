@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,8 +10,10 @@ import '../calls/call_screen.dart';
 import '../calls/incoming_call_screen.dart';
 import '../calls/calls_screen.dart';
 import '../chats/chats_screen.dart';
+import '../chats/chats_split_view.dart';
 import '../chats/chat_detail_screen.dart';
 import '../groups/groups_screen.dart';
+import '../groups/groups_split_view.dart';
 import '../groups/create_group_screen.dart';
 import '../groups/group_info_screen.dart';
 import '../stories/create_story_screen.dart';
@@ -115,19 +118,46 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(routes: [
             GoRoute(
               path: '/chats',
-              builder: (_, _) => const ChatsScreen(),
+              // En web: split view (lista + detalle); en móvil: lista normal.
+              builder: (_, _) => kIsWeb
+                  ? const ChatsSplitView()
+                  : const ChatsScreen(),
               routes: [
                 GoRoute(
                   path: ':chatId',
-                  builder: (_, state) => ChatDetailScreen(
-                    chatId: state.pathParameters['chatId']!,
-                  ),
+                  // En web: mismo ChatsSplitView con el chat seleccionado.
+                  // En móvil: empuja la pantalla de detalle a pantalla completa.
+                  builder: (_, state) {
+                    final id = state.pathParameters['chatId']!;
+                    return kIsWeb
+                        ? ChatsSplitView(selectedChatId: id)
+                        : ChatDetailScreen(chatId: id);
+                  },
                 ),
               ],
             ),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/groups', builder: (_, _) => const GroupsScreen()),
+            GoRoute(
+              path: '/groups',
+              // En web: split view (lista + detalle); en móvil: lista normal.
+              builder: (_, _) => kIsWeb
+                  ? const GroupsSplitView()
+                  : const GroupsScreen(),
+              routes: [
+                GoRoute(
+                  path: ':chatId',
+                  // En web: mismo GroupsSplitView con el grupo seleccionado.
+                  // En móvil: detalle a pantalla completa (mismo widget que chats).
+                  builder: (_, state) {
+                    final id = state.pathParameters['chatId']!;
+                    return kIsWeb
+                        ? GroupsSplitView(selectedChatId: id)
+                        : ChatDetailScreen(chatId: id);
+                  },
+                ),
+              ],
+            ),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(path: '/calls', builder: (_, _) => const CallsScreen()),

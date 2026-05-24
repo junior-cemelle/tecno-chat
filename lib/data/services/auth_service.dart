@@ -53,8 +53,12 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    await GoogleSignIn.instance.signOut();
+    // Firebase primero — es lo que controla la sesión activa.
     await _auth.signOut();
+    // Google Sign-In es opcional: puede no haber sesión Google activa (OTP users).
+    try {
+      await GoogleSignIn.instance.signOut();
+    } catch (_) {}
   }
 
   /// Verifica si el usuario ya tiene perfil en Firestore.

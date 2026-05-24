@@ -2,22 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
 import '../theme/app_colors.dart';
+import '../../data/services/storage_service.dart';
 
 /// Abre el diálogo de foto de perfil.
+/// [uid] se usa para subir la imagen a Supabase con ruta única por usuario.
 /// Retorna la URL confirmada, '' si el usuario elige iniciales, null si cancela.
 Future<String?> showAvatarUrlDialog(
-    BuildContext context, String currentUrl) async {
+    BuildContext context, String currentUrl, String uid) async {
   return showDialog<String>(
     context: context,
-    builder: (_) => _AvatarUrlDialog(initialUrl: currentUrl),
+    builder: (_) => _AvatarUrlDialog(initialUrl: currentUrl, uid: uid),
   );
 }
 
 class _AvatarUrlDialog extends StatefulWidget {
   final String initialUrl;
-  const _AvatarUrlDialog({required this.initialUrl});
+  final String uid;
+  const _AvatarUrlDialog({required this.initialUrl, required this.uid});
 
   @override
   State<_AvatarUrlDialog> createState() => _AvatarUrlDialogState();
@@ -42,9 +44,9 @@ class _AvatarUrlDialogState extends State<_AvatarUrlDialog> {
     super.dispose();
   }
 
-  // ── Subir imagen a Catbox.moe ─────────────────────────────────────────────
+  // ── Subir imagen a Supabase ───────────────────────────────────────────────
 
-  Future<void> _uploadToCatbox() async {
+  Future<void> _uploadToSupabase() async {
     final picker = ImagePicker();
     final file = await picker.pickImage(
       source: ImageSource.gallery,
@@ -60,31 +62,14 @@ class _AvatarUrlDialogState extends State<_AvatarUrlDialog> {
     });
 
     try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('https://catbox.moe/user/api.php'),
-      );
-      request.fields['reqtype'] = 'fileupload';
-      request.files.add(await http.MultipartFile.fromPath(
-        'fileToUpload',
-        file.path,
-      ));
-
-      final streamed = await request.send().timeout(
-            const Duration(seconds: 30),
-          );
-      final body = (await streamed.stream.bytesToString()).trim();
-
-      if (streamed.statusCode == 200 && body.startsWith('http')) {
-        if (mounted) {
-          _ctrl.text = body;
-          setState(() => _preview = body);
-        }
-      } else {
-        if (mounted) setState(() => _uploadError = 'Error al subir imagen');
+      final url = await StorageService()
+          .uploadUserAvatar(widget.uid, file);
+      if (mounted) {
+        _ctrl.text = url;
+        setState(() => _preview = url);
       }
     } catch (e) {
-      if (mounted) setState(() => _uploadError = 'Sin conexión o timeout');
+      if (mounted) setState(() => _uploadError = 'Error al subir imagen: $e');
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
@@ -139,7 +124,7 @@ class _AvatarUrlDialogState extends State<_AvatarUrlDialog> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _uploading ? null : _uploadToCatbox,
+                onPressed: _uploading ? null : _uploadToSupabase,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,

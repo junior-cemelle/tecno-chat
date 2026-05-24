@@ -1,1 +1,37 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"tarea6-clon","appId":"1:240912771850:android:15bc42cbad63788eda68f3","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"tarea6-clon","configurations":{"android":"1:240912771850:android:15bc42cbad63788eda68f3","ios":"1:240912771850:ios:e24cc52c3e7576f6da68f3","web":"1:240912771850:web:ba621610b140fdc7da68f3"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "tarea6-clon",
+          "appId": "1:240912771850:android:15bc42cbad63788eda68f3",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "tarea6-clon",
+          "configurations": {
+            "android": "1:240912771850:android:15bc42cbad63788eda68f3",
+            "ios": "1:240912771850:ios:e24cc52c3e7576f6da68f3",
+            "web": "1:240912771850:web:ba621610b140fdc7da68f3"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
