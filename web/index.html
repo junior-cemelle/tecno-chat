@@ -29,10 +29,66 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>tarea6_clon</title>
+  <title>TecNM Chat</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    /* Oculta el badge de reCAPTCHA — se muestra el texto de atribución
+       en la pantalla de login según lo requieren los términos de Google. */
+    .grecaptcha-badge { visibility: hidden !important; }
+  </style>
+
+  <script>
+    // ── Workaround: TypeError benigno de Google reCAPTCHA v2 ──────────────
+    //
+    // Cuando Firebase Phone Auth intenta usar reCAPTCHA Enterprise sin
+    // tener una key configurada en Google Cloud, hace fallback a v2. En
+    // el teardown de Enterprise quedan callbacks de setTimeout huérfanos
+    // que acceden a `.style` sobre elementos `null` dentro de
+    // recaptcha__en.js → lanza `TypeError: Cannot read properties of null
+    // (reading 'style')`. El flujo OTP funciona bien, pero el error pausa
+    // el debugger (devtools) y aparenta un freeze.
+    //
+    // Como el script es cross-origin sin `crossorigin="anonymous"`,
+    // window.onerror lo recibe opaco ("Script error.") y `preventDefault`
+    // no detiene la pausa del debugger (la pausa ocurre antes del event).
+    //
+    // La única forma confiable de neutralizarlo es interceptar el throw
+    // *dentro del stack*. Como el error siempre ocurre en un setTimeout
+    // callback, wrappeamos setTimeout para silenciar SOLO ese TypeError
+    // específico — cualquier otro error se re-lanza normalmente.
+    (function () {
+      var _setTimeout = window.setTimeout;
+      window.setTimeout = function (fn, delay) {
+        if (typeof fn !== 'function') {
+          return _setTimeout.apply(this, arguments);
+        }
+        var restArgs = Array.prototype.slice.call(arguments, 2);
+        return _setTimeout(function () {
+          try {
+            return fn.apply(this, restArgs);
+          } catch (e) {
+            if (e instanceof TypeError &&
+                e.message &&
+                e.message.indexOf("'style'") !== -1) {
+              return; // silenciar solo este TypeError específico
+            }
+            throw e;
+          }
+        }, delay);
+      };
+    })();
+  </script>
 </head>
 <body>
+  <!--
+    Agora Web SDK + iris bindings para agora_rtc_engine 6.5.3.
+    Versión específica (n450_w4220_0.8.6) tomada del example oficial del
+    package; sin este script, createAgoraRtcEngine() en web falla con
+    "Cannot read properties of undefined (reading 'createIrisApiEngine')".
+    Se carga ANTES de flutter_bootstrap para garantizar que los globals
+    estén disponibles cuando main.dart.js llame a Agora.
+  -->
+  <script src="https://download.agora.io/sdk/release/iris-web-rtc_n450_w4220_0.8.6.js"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

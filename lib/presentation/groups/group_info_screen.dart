@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -47,7 +45,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     setState(() => _uploadingAvatar = true);
     try {
       final url = await StorageService()
-          .uploadGroupAvatar(chatId, File(xfile.path));
+          .uploadGroupAvatar(chatId, xfile);
       await ref
           .read(firestoreServiceProvider)
           .updateGroup(chatId, avatarUrl: url);

@@ -1,33 +1,43 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:math' show min;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+// ignore: unnecessary_import — necesario para LogicalKeyboardKey
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart' hide Config;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
-import 'video_player_screen.dart';
 import 'package:intl/intl.dart';
+import '../../core/platform/file_utils.dart';
+import '../../core/platform/video_player_launcher.dart';
+import '../../core/platform/video_thumbnail_util.dart';
+import '../../core/platform/web_camera_capture.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/avatar_widget.dart';
+import '../../data/models/chat_model.dart';
 import '../../data/models/message_model.dart';
 import '../../data/services/storage_service.dart';
 import '../../data/models/call_model.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/call_provider.dart';
 import '../../providers/firestore_provider.dart';
 import 'audio_bubble.dart';
+import 'image_viewer_modal.dart';
 import 'gif_picker_sheet.dart';
 
 class ChatDetailScreen extends ConsumerStatefulWidget {
   final String chatId;
-  const ChatDetailScreen({super.key, required this.chatId});
+  /// En split view (web), oculta el botón de regreso y elimina el cap de
+  /// ancho del contenido (el panel ya viene constrained desde el padre).
+  final bool inSplitView;
+  const ChatDetailScreen(
+      {super.key, required this.chatId, this.inSplitView = false});
 
   @override
   ConsumerState<ChatDetailScreen> createState() => _ChatDetailState();
@@ -85,8 +95,16 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
     final hasPermission = await _recorder.hasPermission();
     if (!hasPermission) return;
 
-    final dir = await getTemporaryDirectory();
-    final path = '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    // En web no existe sistema de archivos: path_provider lanzaría
+    // MissingPluginException. El package record ignora el path en web
+    // y guarda el audio en un Blob en memoria; stop() devuelve un blob URL.
+    final String path;
+    if (kIsWeb) {
+      path = '';
+    } else {
+      final dir = await getTemporaryDirectory();
+      path = '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    }
 
     setState(() {
       _recording = true;
@@ -96,7 +114,9 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
 
     await _recorder.start(
       path: path,
-      encoder: AudioEncoder.aacLc,
+      // AAC no está soportado en Firefox; Opus (WebM) funciona en todos los
+      // navegadores. En móvil se mantiene AAC-LC para compatibilidad con iOS.
+      encoder: kIsWeb ? AudioEncoder.opus : AudioEncoder.aacLc,
       bitRate: 128000,
       samplingRate: 44100,
     );
@@ -130,9 +150,14 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
     if (path == null || _myUid.isEmpty) return;
     setState(() => _uploading = true);
     try {
+      // En web, path es un blob URL sin extensión: pasamos name explícito
+      // para que StorageService detecte la extensión/MIME correctos (webm/opus).
+      final xfile = kIsWeb
+          ? XFile(path, name: 'audio.webm', mimeType: 'audio/webm')
+          : XFile(path);
       final url = await StorageService().uploadChatMedia(
         chatId: widget.chatId,
-        file: File(path),
+        xfile: xfile,
         folder: 'audio',
       );
       await ref.read(firestoreServiceProvider).sendMessage(
@@ -160,9 +185,7 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
     await _ampSub?.cancel();
     // record 4.x no tiene cancel() — se detiene y se borra el archivo
     final path = await _recorder.stop();
-    if (path != null) {
-      try { await File(path).delete(); } catch (_) {}
-    }
+    if (path != null) await deleteFile(path);
     if (mounted) {
       setState(() { _recording = false; _liveAmplitudes = []; _recordDuration = Duration.zero; });
     }
@@ -197,13 +220,13 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
 
   // ── Envío de media ──────────────────────────────────────────────────────────
 
-  Future<void> _sendFile(File file, String folder, String type) async {
+  Future<void> _sendFile(XFile xfile, String folder, String type) async {
     if (_myUid.isEmpty) return;
     setState(() => _uploading = true);
     try {
       final url = await StorageService().uploadChatMedia(
         chatId: widget.chatId,
-        file: file,
+        xfile: xfile,
         folder: folder,
       );
       await ref.read(firestoreServiceProvider).sendMessage(
@@ -230,7 +253,18 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
   Future<void> _pickImage(ImageSource source) async {
     final xfile = await _picker.pickImage(
         source: source, imageQuality: 85, maxWidth: 1920);
-    if (xfile != null) await _sendFile(File(xfile.path), 'images', 'image');
+    if (xfile != null) await _sendFile(xfile, 'images', 'image');
+  }
+
+  /// En web usa el stream de la webcam (getUserMedia + canvas).
+  /// En móvil delega a [_pickImage] con ImageSource.camera.
+  Future<void> _pickImageOrWebcam() async {
+    if (kIsWeb) {
+      final xfile = await captureFromWebCamera();
+      if (xfile != null && mounted) await _sendFile(xfile, 'images', 'image');
+    } else {
+      await _pickImage(ImageSource.camera);
+    }
   }
 
   Future<void> _pickVideo() async {
@@ -244,24 +278,24 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
       // Subir video
       final videoUrl = await storage.uploadChatMedia(
         chatId: widget.chatId,
-        file: File(xfile.path),
+        xfile: xfile,
         folder: 'videos',
       );
 
-      // Generar thumbnail del primer frame
+      // Generar thumbnail. En web se crea a partir de VideoElement + Canvas.
+      debugPrint('Attempting video thumbnail generation for web: ${xfile.name}');
       String? thumbUrl;
-      final thumbPath = await VideoThumbnail.thumbnailFile(
-        video: xfile.path,
-        imageFormat: ImageFormat.JPEG,
-        maxHeight: 400,
-        quality: 80,
-      );
-      if (thumbPath != null) {
+      final thumbFile = await generateVideoThumbnail(xfile);
+      debugPrint('generateVideoThumbnail result for ${xfile.name}: ${thumbFile != null ? 'success' : 'null'}');
+      if (thumbFile != null) {
         thumbUrl = await storage.uploadChatMedia(
           chatId: widget.chatId,
-          file: File(thumbPath),
+          xfile: thumbFile,
           folder: 'thumbnails',
         );
+        debugPrint('Thumbnail uploaded: $thumbUrl');
+      } else {
+        debugPrint('generateVideoThumbnail returned null for web video: ${xfile.name}');
       }
 
       await ref.read(firestoreServiceProvider).sendMessage(
@@ -301,7 +335,7 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => _AttachmentSheet(
-        onCamera: () { Navigator.pop(context); _pickImage(ImageSource.camera); },
+        onCamera: () { Navigator.pop(context); _pickImageOrWebcam(); },
         onGallery: () { Navigator.pop(context); _pickImage(ImageSource.gallery); },
         onVideo: () { Navigator.pop(context); _pickVideo(); },
         onGif: () { Navigator.pop(context); _pickGif(); },
@@ -387,7 +421,10 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
 
         return Scaffold(
           appBar: AppBar(
-            titleSpacing: 0,
+            titleSpacing: widget.inSplitView ? 16 : 0,
+            // En split view ocultamos el back automático: la lista de chats
+            // permanece visible y el usuario puede cambiar de chat directamente.
+            automaticallyImplyLeading: !widget.inSplitView,
             title: Row(
               children: [
                 AvatarWidget(
@@ -444,30 +481,19 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
           ),
           body: Stack(
             children: [
-              Column(
-                children: [
-                  Expanded(
-                    child: _MessageList(
-                      msgsAsync: msgsAsync,
-                      myUid: _myUid,
-                      scrollCtrl: _scrollCtrl,
-                      onLoaded: _scrollToBottom,
-                      onNewMessages: _markRead,
-                      isGroup: chat.isGroup,
-                    ),
-                  ),
-                  _InputBar(
-                    controller: _textCtrl,
-                    onSend: _sendText,
-                    onAttachment: _showAttachmentSheet,
-                    isRecording: _recording,
-                    liveAmplitudes: _liveAmplitudes,
-                    recordDuration: _recordDuration,
-                    onStartRecord: _startRecord,
-                    onStopRecord: _stopAndSend,
-                    onCancelRecord: _cancelRecord,
-                  ),
-                ],
+              // En split view (web) no se aplica cap porque el panel ya viene
+              // constrained desde ChatsSplitView. En web standalone se centra
+              // con maxWidth 900. En móvil ocupa todo el ancho.
+              Positioned.fill(
+                child: (kIsWeb && !widget.inSplitView)
+                    ? Center(
+                        child: ConstrainedBox(
+                          constraints:
+                              const BoxConstraints(maxWidth: 900),
+                          child: _chatColumn(msgsAsync, chat),
+                        ),
+                      )
+                    : _chatColumn(msgsAsync, chat),
               ),
               // Indicador de subida
               if (_uploading)
@@ -491,6 +517,37 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
           ),
         );
       },
+    );
+  }
+
+  // Columna de contenido del chat: lista + barra de entrada.
+  // Extraída para reutilizarse en el layout móvil y web (con ConstrainedBox).
+  Widget _chatColumn(
+      AsyncValue<List<MessageModel>> msgsAsync, ChatModel chat) {
+    return Column(
+      children: [
+        Expanded(
+          child: _MessageList(
+            msgsAsync: msgsAsync,
+            myUid: _myUid,
+            scrollCtrl: _scrollCtrl,
+            onLoaded: _scrollToBottom,
+            onNewMessages: _markRead,
+            isGroup: chat.isGroup,
+          ),
+        ),
+        _InputBar(
+          controller: _textCtrl,
+          onSend: _sendText,
+          onAttachment: _showAttachmentSheet,
+          isRecording: _recording,
+          liveAmplitudes: _liveAmplitudes,
+          recordDuration: _recordDuration,
+          onStartRecord: _startRecord,
+          onStopRecord: _stopAndSend,
+          onCancelRecord: _cancelRecord,
+        ),
+      ],
     );
   }
 }
@@ -685,8 +742,8 @@ class _TextBubble extends StatelessWidget {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints:
-            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+        constraints: BoxConstraints(
+            maxWidth: min(MediaQuery.of(context).size.width * 0.75, 520)),
         margin: EdgeInsets.only(
             top: compact ? 1 : 4,
             bottom: 1,
@@ -767,7 +824,7 @@ class _ImageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxW = MediaQuery.of(context).size.width * 0.65;
+    final maxW = min(MediaQuery.of(context).size.width * 0.65, 420.0);
     final cs = Theme.of(context).colorScheme;
 
     return Align(
@@ -776,7 +833,15 @@ class _ImageBubble extends StatelessWidget {
         constraints: BoxConstraints(maxWidth: maxW),
         margin: EdgeInsets.only(
             top: 4, bottom: 1, left: isMe ? 48 : 0, right: isMe ? 0 : 48),
-        child: ClipRRect(
+        child: GestureDetector(
+          onTap: () => showImageViewer(
+            context,
+            msg.content,
+            isGif: msg.type == MessageType.gif,
+          ),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: ClipRRect(
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
@@ -785,25 +850,52 @@ class _ImageBubble extends StatelessWidget {
           ),
           child: Stack(
             children: [
-              CachedNetworkImage(
-                imageUrl: msg.content,
-                width: maxW,
-                fit: BoxFit.cover,
-                placeholder: (_, _) => Container(
+              // CachedNetworkImage decodifica los GIFs como estáticos.
+              // Para GIFs animados se usa Image.network (el browser/Flutter
+              // los renderiza nativamente con animación).
+              if (msg.type == MessageType.gif)
+                Image.network(
+                  msg.content,
                   width: maxW,
-                  height: 180,
-                  color: cs.surfaceContainerHighest,
-                  child: const Center(
-                      child: CircularProgressIndicator(
-                          color: AppColors.green, strokeWidth: 2)),
-                ),
-                errorWidget: (_, _, _) => Container(
+                  fit: BoxFit.cover,
+                  loadingBuilder: (_, child, progress) {
+                    if (progress == null) return child;
+                    return Container(
+                      width: maxW,
+                      height: 180,
+                      color: cs.surfaceContainerHighest,
+                      child: const Center(
+                          child: CircularProgressIndicator(
+                              color: AppColors.green, strokeWidth: 2)),
+                    );
+                  },
+                  errorBuilder: (ctx, err, st) => Container(
+                    width: maxW,
+                    height: 120,
+                    color: cs.surfaceContainerHighest,
+                    child: const Icon(Icons.broken_image_outlined),
+                  ),
+                )
+              else
+                CachedNetworkImage(
+                  imageUrl: msg.content,
                   width: maxW,
-                  height: 120,
-                  color: cs.surfaceContainerHighest,
-                  child: const Icon(Icons.broken_image_outlined),
+                  fit: BoxFit.cover,
+                  placeholder: (_, _) => Container(
+                    width: maxW,
+                    height: 180,
+                    color: cs.surfaceContainerHighest,
+                    child: const Center(
+                        child: CircularProgressIndicator(
+                            color: AppColors.green, strokeWidth: 2)),
+                  ),
+                  errorWidget: (_, _, _) => Container(
+                    width: maxW,
+                    height: 120,
+                    color: cs.surfaceContainerHighest,
+                    child: const Icon(Icons.broken_image_outlined),
+                  ),
                 ),
-              ),
               // Hora superpuesta en esquina inferior
               Positioned(
                 bottom: 6,
@@ -826,6 +918,8 @@ class _ImageBubble extends StatelessWidget {
             ],
           ),
         ),
+          ), // cierre MouseRegion
+        ), // cierre GestureDetector
       ),
     );
   }
@@ -840,7 +934,7 @@ class _VideoBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxW = MediaQuery.of(context).size.width * 0.65;
+    final maxW = min(MediaQuery.of(context).size.width * 0.65, 420.0);
     final cs = Theme.of(context).colorScheme;
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(16),
@@ -852,12 +946,7 @@ class _VideoBubble extends StatelessWidget {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => VideoPlayerScreen(url: msg.content),
-          ),
-        ),
+        onTap: () => launchVideoPlayer(context, msg.content),
         child: Container(
           width: maxW,
           height: 160,
@@ -1158,27 +1247,44 @@ class _InputBarState extends State<_InputBar> {
                         ),
                         onPressed: _toggleEmoji,
                       ),
-                      // Campo de texto
+                      // Campo de texto con shortcut Ctrl+Enter para enviar
                       Expanded(
-                        child: TextField(
-                          controller: widget.controller,
-                          focusNode: _focusNode,
-                          textCapitalization: TextCapitalization.sentences,
-                          maxLines: 5,
-                          minLines: 1,
-                          decoration: InputDecoration(
-                            hintText: 'Mensaje',
-                            hintStyle: GoogleFonts.poppins(fontSize: 14),
-                            filled: true,
-                            fillColor: cs.surfaceContainerHighest,
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide.none,
+                        child: CallbackShortcuts(
+                          bindings: {
+                            const SingleActivator(LogicalKeyboardKey.enter,
+                                control: true): () {
+                              if (widget.controller.text.trim().isNotEmpty) {
+                                widget.onSend();
+                              }
+                            },
+                            // En Mac, Cmd+Enter por convención
+                            const SingleActivator(LogicalKeyboardKey.enter,
+                                meta: true): () {
+                              if (widget.controller.text.trim().isNotEmpty) {
+                                widget.onSend();
+                              }
+                            },
+                          },
+                          child: TextField(
+                            controller: widget.controller,
+                            focusNode: _focusNode,
+                            textCapitalization: TextCapitalization.sentences,
+                            maxLines: 5,
+                            minLines: 1,
+                            decoration: InputDecoration(
+                              hintText: 'Mensaje',
+                              hintStyle: GoogleFonts.poppins(fontSize: 14),
+                              filled: true,
+                              fillColor: cs.surfaceContainerHighest,
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 10),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
                             ),
+                            onSubmitted: (_) => widget.onSend(),
                           ),
-                          onSubmitted: (_) => widget.onSend(),
                         ),
                       ),
                       const SizedBox(width: 4),
@@ -1203,6 +1309,7 @@ class _InputBarState extends State<_InputBar> {
                                 child: IconButton(
                                   icon: const Icon(Icons.send_rounded,
                                       color: Colors.white, size: 20),
+                                  tooltip: 'Enviar (Ctrl + Enter)',
                                   onPressed: widget.onSend,
                                 ),
                               ),
@@ -1217,29 +1324,43 @@ class _InputBarState extends State<_InputBar> {
           offstage: !_showEmoji || widget.isRecording,
           child: SizedBox(
             height: 280,
-            child: EmojiPicker(
-              textEditingController: widget.controller,
-              config: Config(
-                height: 280,
-                checkPlatformCompatibility: true,
-                emojiViewConfig:
-                    EmojiViewConfig(emojiSizeMax: 28, backgroundColor: cs.surface),
-                categoryViewConfig: CategoryViewConfig(
-                  backgroundColor: cs.surface,
-                  iconColor: cs.onSurface.withAlpha(100),
-                  iconColorSelected: AppColors.green,
-                  indicatorColor: AppColors.green,
-                ),
-                bottomActionBarConfig: BottomActionBarConfig(
-                  backgroundColor: cs.surface,
-                  buttonIconColor: cs.onSurface.withAlpha(150),
-                ),
-                skinToneConfig: const SkinToneConfig(),
-                searchViewConfig: SearchViewConfig(
-                  backgroundColor: cs.surface,
-                  buttonIconColor: cs.onSurface.withAlpha(150),
-                ),
-              ),
+            // LayoutBuilder calcula cuántas columnas caben con un cell size
+            // aproximado de 44px. En móvil (~360px) da ~8 columnas; en web
+            // con el chat panel ancho (~900px) da ~20 columnas, evitando
+            // que los emojis queden separados con cientos de pixels en blanco
+            // entre uno y otro (que era el comportamiento por defecto al usar
+            // columns: 7 sobre cualquier ancho disponible).
+            child: LayoutBuilder(
+              builder: (ctx, constraints) {
+                final cols = (constraints.maxWidth / 44).floor().clamp(7, 24);
+                return EmojiPicker(
+                  textEditingController: widget.controller,
+                  config: Config(
+                    height: 280,
+                    checkPlatformCompatibility: true,
+                    emojiViewConfig: EmojiViewConfig(
+                      columns: cols,
+                      emojiSizeMax: 28,
+                      backgroundColor: cs.surface,
+                    ),
+                    categoryViewConfig: CategoryViewConfig(
+                      backgroundColor: cs.surface,
+                      iconColor: cs.onSurface.withAlpha(100),
+                      iconColorSelected: AppColors.green,
+                      indicatorColor: AppColors.green,
+                    ),
+                    bottomActionBarConfig: BottomActionBarConfig(
+                      backgroundColor: cs.surface,
+                      buttonIconColor: cs.onSurface.withAlpha(150),
+                    ),
+                    skinToneConfig: const SkinToneConfig(),
+                    searchViewConfig: SearchViewConfig(
+                      backgroundColor: cs.surface,
+                      buttonIconColor: cs.onSurface.withAlpha(150),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),

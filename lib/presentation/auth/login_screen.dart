@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/constants/app_assets.dart';
+import '../../core/platform/recaptcha_cleanup.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/fade_background.dart';
 import '../../providers/auth_provider.dart';
@@ -38,6 +39,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     await ref.read(authServiceProvider).verifyPhone(
       phone: '+52$digits',
       onCodeSent: (vid) {
+        // Eliminar iframes de reCAPTCHA del DOM antes de navegar
+        // para que no bloqueen la interacción en la pantalla de OTP.
+        clearRecaptchaWidgets();
         if (!mounted) return;
         setState(() => _loading = false);
         context.push('/otp', extra: {
@@ -115,6 +119,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 child: ConstrainedBox(
                   constraints:
                       BoxConstraints(minHeight: constraints.maxHeight),
+                  // En web la ventana puede ser muy ancha; limitamos el ancho
+                  // del card glassmorphism y lo centramos para que no se
+                  // estire de borde a borde como una franja gigante.
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 460),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -162,7 +172,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
+                      // Atribución reCAPTCHA (requerida al ocultar el badge)
+                      Text(
+                        'Este sitio está protegido por reCAPTCHA. '
+                        'Aplican la Política de Privacidad y los '
+                        'Términos de Servicio de Google.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.white.withAlpha(100),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                     ],
+                  ),
+                    ),
                   ),
                 ),
               ),

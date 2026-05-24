@@ -106,11 +106,15 @@ class _AudioBubbleState extends State<AudioBubble> {
     final activeWave = isMe ? Colors.white : AppColors.green;
     final inactiveWave = isMe ? Colors.white.withAlpha(80) : cs.onSurface.withAlpha(60);
 
+    // Cap absoluto para que la burbuja no ocupe todo el ancho en web/desktop.
+    final maxW =
+        math.min(MediaQuery.of(context).size.width * 0.55, 280.0);
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
+          maxWidth: maxW,
           minWidth: 200,
         ),
         margin: EdgeInsets.only(

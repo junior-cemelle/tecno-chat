@@ -80,7 +80,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   }
 
   Future<void> _pickAvatar() async {
-    final url = await showAvatarUrlDialog(context, _googlePhotoUrl);
+    final url = await showAvatarUrlDialog(context, _googlePhotoUrl, FirebaseAuth.instance.currentUser?.uid ?? '');
     if (url != null && mounted) setState(() => _googlePhotoUrl = url);
   }
 
@@ -160,6 +160,14 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                 child: ConstrainedBox(
                   constraints:
                       BoxConstraints(minHeight: constraints.maxHeight),
+                  // En web la ventana puede ser muy ancha; limitamos el card
+                  // a un ancho cómodo de formulario (520) y lo centramos para
+                  // que los inputs no se estiren a lo ancho de toda la
+                  // pantalla. En móvil el card sigue ocupando el ancho
+                  // disponible (porque siempre es menor a 520).
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -186,6 +194,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                       ),
                       const SizedBox(height: 24),
                     ],
+                  ),
+                    ),
                   ),
                 ),
               ),

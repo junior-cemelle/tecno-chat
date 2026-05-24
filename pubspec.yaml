@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
 
   firebase_core: ^4.8.0
   firebase_auth: ^6.5.0
@@ -30,6 +32,7 @@ dependencies:
   emoji_picker_flutter: ^4.4.0  # Selector de emojis
   cached_network_image: ^3.4.1  # Cache de imágenes
   agora_rtc_engine: ^6.5.3      # Video llamadas
+  permission_handler: ^11.3.1   # Permisos runtime (CAMERA en Android/iOS)
   intl: ^0.20.2               # Fechas y formatos
   flutter_local_notifications: ^21.0.0
   google_fonts: ^6.2.1

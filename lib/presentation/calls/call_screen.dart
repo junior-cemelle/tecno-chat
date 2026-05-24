@@ -1,13 +1,14 @@
 import 'dart:async';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:record/record.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/platform/media_permissions.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/avatar_widget.dart';
 import '../../data/models/call_model.dart';
@@ -48,6 +49,10 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   StreamSubscription<CallModel?>? _callSub;
   bool _ended = false;
 
+  // Aspect ratio del video remoto, reportado por onVideoSizeChanged.
+  // 16/9 mientras no llega el primer evento (mayoría de cámaras web/móviles).
+  double _remoteAspect = 16 / 9;
+
   @override
   void initState() {
     super.initState();
@@ -58,12 +63,11 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     });
   }
 
-  /// Solicita RECORD_AUDIO (y CAMERA para videollamadas) en runtime.
-  /// Usa el paquete `record` que ya gestiona el diálogo del sistema.
+  /// Solicita micrófono (y cámara si es videollamada) antes de inicializar
+  /// Agora. En móvil el helper delega en Record; en web usa getUserMedia para
+  /// disparar el diálogo del navegador de forma fiable.
   Future<void> _requestPermissions() async {
-    final recorder = Record();
-    await recorder.hasPermission(); // muestra el diálogo si no está concedido
-    recorder.dispose();
+    await requestMediaPermissions(video: widget.isVideo);
   }
 
   @override
@@ -88,8 +92,9 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       onJoinChannelSuccess: (_, __) {
         if (!mounted) return;
         setState(() => _localJoined = true);
-        // setEnableSpeakerphone solo es válido después de unirse al canal
-        engine.setEnableSpeakerphone(_speakerOn);
+        // setEnableSpeakerphone solo es válido después de unirse al canal.
+        // En web es no-op: el navegador gestiona la salida de audio.
+        if (!kIsWeb) engine.setEnableSpeakerphone(_speakerOn);
       },
       onUserJoined: (_, remoteUid, __) {
         if (!mounted) return;
@@ -102,6 +107,16 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       },
       onUserOffline: (_, __, ___) {
         if (mounted && !_ended) _finishCall(updateFirestore: false);
+      },
+      // Reporta el tamaño real del stream remoto (uid != 0) y del local
+      // (uid == 0). Lo usamos para fijar el aspect ratio del AgoraVideoView
+      // remoto y evitar que el SDK web lo recorte con object-fit: cover.
+      onVideoSizeChanged: (_, __, uid, width, height, ___) {
+        if (uid == 0 || width == 0 || height == 0 || !mounted) return;
+        final ar = width / height;
+        if ((ar - _remoteAspect).abs() > 0.01) {
+          setState(() => _remoteAspect = ar);
+        }
       },
       onError: (err, msg) => debugPrint('Agora error $err: $msg'),
     ));
@@ -226,13 +241,32 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Fondo: video remoto o avatar si todavía no conecta
+        // Fondo: video remoto o avatar si todavía no conecta.
+        //
+        // El `renderMode: renderModeFit` del VideoCanvas no se respeta en el
+        // Agora Web SDK (aplica object-fit: cover internamente al <video>
+        // HTML). Para forzar letterbox confiable cross-platform envolvemos
+        // el AgoraVideoView en Center + AspectRatio con la relación real
+        // del stream remoto (capturada por onVideoSizeChanged); así el
+        // widget se dimensiona al tamaño del frame y queda fondo negro
+        // alrededor cuando la ventana es más ancha o más alta.
         _remoteAgoraUid != null
-            ? AgoraVideoView(
-                controller: VideoViewController.remote(
-                  rtcEngine: _engine!,
-                  canvas: VideoCanvas(uid: _remoteAgoraUid!),
-                  connection: RtcConnection(channelId: widget.channelId),
+            ? ColoredBox(
+                color: Colors.black,
+                child: Center(
+                  child: AspectRatio(
+                    aspectRatio: _remoteAspect,
+                    child: AgoraVideoView(
+                      controller: VideoViewController.remote(
+                        rtcEngine: _engine!,
+                        canvas: VideoCanvas(
+                          uid: _remoteAgoraUid!,
+                          renderMode: RenderModeType.renderModeFit,
+                        ),
+                        connection: RtcConnection(channelId: widget.channelId),
+                      ),
+                    ),
+                  ),
                 ),
               )
             : _Placeholder(name: name, photo: photo, status: _statusLabel),
@@ -316,11 +350,15 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                       _engine?.enableLocalVideo(!_videoOff);
                     },
                   ),
-                  _Btn(
-                    icon: Icons.flip_camera_ios_outlined,
-                    label: 'Voltear',
-                    onTap: () => _engine?.switchCamera(),
-                  ),
+                  // En web no hay forma fiable de cambiar entre cámaras
+                  // (depende de los devices disponibles), así que ocultamos
+                  // el botón en lugar de mostrarlo sin función.
+                  if (!kIsWeb)
+                    _Btn(
+                      icon: Icons.flip_camera_ios_outlined,
+                      label: 'Voltear',
+                      onTap: () => _engine?.switchCamera(),
+                    ),
                   _Btn(
                     icon: Icons.call_end,
                     label: 'Colgar',
@@ -378,14 +416,18 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                     _engine?.muteLocalAudioStream(_micMuted);
                   },
                 ),
-                _Btn(
-                  icon: _speakerOn ? Icons.volume_up : Icons.volume_down,
-                  label: _speakerOn ? 'Auricular' : 'Altavoz',
-                  onTap: () {
-                    setState(() => _speakerOn = !_speakerOn);
-                    _engine?.setEnableSpeakerphone(_speakerOn);
-                  },
-                ),
+                // En web el navegador gestiona la salida de audio (no se
+                // puede cambiar entre auricular/altavoz desde la app),
+                // así que ocultamos el botón.
+                if (!kIsWeb)
+                  _Btn(
+                    icon: _speakerOn ? Icons.volume_up : Icons.volume_down,
+                    label: _speakerOn ? 'Auricular' : 'Altavoz',
+                    onTap: () {
+                      setState(() => _speakerOn = !_speakerOn);
+                      _engine?.setEnableSpeakerphone(_speakerOn);
+                    },
+                  ),
                 _Btn(
                   icon: Icons.call_end,
                   label: 'Colgar',

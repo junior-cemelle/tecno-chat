@@ -115,7 +115,14 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(28),
-        child: Column(
+        // Center + ConstrainedBox para que en web la fila de 6 cajitas no
+        // se disperse a lo ancho de toda la ventana (con spaceBetween cada
+        // caja quedaba a ~250px de la siguiente). 420px deja un layout
+        // cómodo en móvil y web.
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 24),
@@ -176,6 +183,8 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                     ),
             ),
           ],
+        ),
+          ),
         ),
       ),
     );

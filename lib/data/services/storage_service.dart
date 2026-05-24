@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class StorageService {
@@ -15,14 +15,17 @@ class StorageService {
     'm4a': 'audio/m4a',
     'aac': 'audio/aac',
     'mp3': 'audio/mpeg',
+    'webm': 'audio/webm',
+    'ogg': 'audio/ogg',
   };
 
-  /// Sube la imagen de un story (sobreescribe si ya existe).
-  Future<String> uploadStoryImage(String storyId, File file) async {
+  /// Sube la imagen de un story. Usa bytes para compatibilidad web/móvil.
+  Future<String> uploadStoryImage(String storyId, XFile xfile) async {
     final path = 'stories/$storyId.jpg';
-    await _storage.from(_bucket).upload(
+    final bytes = await xfile.readAsBytes();
+    await _storage.from(_bucket).uploadBinary(
           path,
-          file,
+          bytes,
           fileOptions: const FileOptions(
               contentType: 'image/jpeg', upsert: true),
         );
@@ -30,38 +33,63 @@ class StorageService {
     return '$base?t=${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  /// Sube el avatar de un grupo (sobreescribe si ya existe).
-  Future<String> uploadGroupAvatar(String chatId, File file) async {
-    final path = '$chatId/group-avatar.jpg';
-    await _storage.from(_bucket).upload(
+  /// Sube el avatar de un usuario a Supabase.
+  Future<String> uploadUserAvatar(String uid, XFile xfile) async {
+    final path = 'avatars/$uid.jpg';
+    final bytes = await xfile.readAsBytes();
+    await _storage.from(_bucket).uploadBinary(
           path,
-          file,
+          bytes,
           fileOptions: const FileOptions(
             contentType: 'image/jpeg',
-            upsert: true, // sobreescribir en actualizaciones
+            upsert: true,
           ),
         );
-    // Añadir timestamp para invalidar caché del CDN
     final base = _storage.from(_bucket).getPublicUrl(path);
     return '$base?t=${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  /// Sube un archivo al bucket y devuelve la URL pública.
+  /// Sube el avatar de un grupo.
+  Future<String> uploadGroupAvatar(String chatId, XFile xfile) async {
+    final path = '$chatId/group-avatar.jpg';
+    final bytes = await xfile.readAsBytes();
+    await _storage.from(_bucket).uploadBinary(
+          path,
+          bytes,
+          fileOptions: const FileOptions(
+            contentType: 'image/jpeg',
+            upsert: true,
+          ),
+        );
+    final base = _storage.from(_bucket).getPublicUrl(path);
+    return '$base?t=${DateTime.now().millisecondsSinceEpoch}';
+  }
+
+  /// Sube cualquier archivo de media y devuelve su URL pública.
+  ///
+  /// La extensión se determina a partir de [XFile.name] (más confiable que
+  /// [XFile.path], ya que en web `path` puede ser un blob URL sin extensión —
+  /// p.ej. `blob:http://localhost:5005/uuid`). Para audios grabados en web
+  /// usa `XFile(blobUrl, name: 'audio.webm')` para que la extensión llegue
+  /// aquí correctamente.
   Future<String> uploadChatMedia({
     required String chatId,
-    required File file,
-    required String folder, // 'images' | 'videos' | 'audio'
+    required XFile xfile,
+    required String folder, // 'images' | 'videos' | 'audio' | 'thumbnails'
   }) async {
-    final ext = file.path.split('.').last.toLowerCase();
+    final fname = xfile.name;
+    final ext = fname.contains('.')
+        ? fname.split('.').last.toLowerCase()
+        : 'bin';
     final name = '${DateTime.now().millisecondsSinceEpoch}.$ext';
     final path = '$chatId/$folder/$name';
+    final bytes = await xfile.readAsBytes();
 
-    await _storage.from(_bucket).upload(
+    await _storage.from(_bucket).uploadBinary(
           path,
-          file,
+          bytes,
           fileOptions: FileOptions(
             contentType: _mime[ext] ?? 'application/octet-stream',
-            upsert: false,
           ),
         );
 

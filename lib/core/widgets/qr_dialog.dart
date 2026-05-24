@@ -64,19 +64,26 @@ class _QrDialog extends StatelessWidget {
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
             ),
+            // SizedBox fija las dimensiones explícitamente para evitar que
+          // AlertDialog (IntrinsicWidth) propague medidas al LayoutBuilder
+          // interno de QrImageView, lo que causa crash en Flutter web.
+          child: SizedBox(
+            width: 220,
+            height: 220,
             child: QrImageView(
               data: qrData,
               version: QrVersions.auto,
               size: 220,
-              eyeStyle: const QrEyeStyle(
-                eyeShape: QrEyeShape.square,
-                color: Colors.black,
-              ),
-              dataModuleStyle: const QrDataModuleStyle(
-                dataModuleShape: QrDataModuleShape.square,
-                color: Colors.black,
+              backgroundColor: Colors.white,
+              errorStateBuilder: (ctx, err) => const Center(
+                child: Text(
+                  'No se pudo generar el QR',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.red),
+                ),
               ),
             ),
+          ),
           ),
           const SizedBox(height: 16),
           // ── Info del usuario ─────────────────────────────────────────

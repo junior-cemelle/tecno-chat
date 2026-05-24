@@ -12,7 +12,18 @@ import 'new_chat_sheet.dart';
 import '../stories/stories_row.dart';
 
 class ChatsScreen extends ConsumerWidget {
-  const ChatsScreen({super.key});
+  /// Cuando es true, la pantalla actúa como panel de la lista en el layout
+  /// split (web). Cambia la navegación a [context.go] para no apilar rutas.
+  final bool inSplitView;
+
+  /// ID del chat actualmente seleccionado (para resaltar en la lista).
+  final String? selectedChatId;
+
+  const ChatsScreen({
+    super.key,
+    this.inSplitView = false,
+    this.selectedChatId,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -24,15 +35,20 @@ class ChatsScreen extends ConsumerWidget {
     };
 
     return Scaffold(
+      // En split view el sidebar global ya tiene el branding; aquí mostramos
+      // solo "Chats" como título de la lista para no duplicar.
       appBar: AppBar(
-        title: Text('TecNM Chat', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        title: Text(
+          inSplitView ? 'Chats' : 'TecNM Chat',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        automaticallyImplyLeading: false,
         actions: [
           IconButton(icon: const Icon(Icons.search), onPressed: () {}),
         ],
       ),
       body: Column(
         children: [
-          // Fila de stories institucionales (se oculta automáticamente si no hay contenido)
           const StoriesRow(),
           Expanded(
             child: chatsAsync.when(
@@ -45,8 +61,12 @@ class ChatsScreen extends ConsumerWidget {
                       itemCount: chats.length,
                       separatorBuilder: (_, _) =>
                           const Divider(height: 1, indent: 72),
-                      itemBuilder: (_, i) =>
-                          _ChatTile(chat: chats[i], myUid: myUid),
+                      itemBuilder: (_, i) => _ChatTile(
+                        chat: chats[i],
+                        myUid: myUid,
+                        inSplitView: inSplitView,
+                        isSelected: chats[i].id == selectedChatId,
+                      ),
                     ),
             ),
           ),
@@ -59,7 +79,12 @@ class ChatsScreen extends ConsumerWidget {
         onPressed: () async {
           final chatId = await showNewChatSheet(context);
           if (chatId != null && context.mounted) {
-            context.push('/chats/$chatId');
+            // En split view: actualizar URL sin apilar; en móvil: push normal
+            if (inSplitView) {
+              context.go('/chats/$chatId');
+            } else {
+              context.push('/chats/$chatId');
+            }
           }
         },
         child: const Icon(Icons.chat_rounded),
@@ -73,7 +98,15 @@ class ChatsScreen extends ConsumerWidget {
 class _ChatTile extends ConsumerWidget {
   final ChatModel chat;
   final String myUid;
-  const _ChatTile({required this.chat, required this.myUid});
+  final bool inSplitView;
+  final bool isSelected;
+
+  const _ChatTile({
+    required this.chat,
+    required this.myUid,
+    required this.inSplitView,
+    required this.isSelected,
+  });
 
   String get _otherUid => chat.participantIds.firstWhere(
         (id) => id != myUid,
@@ -93,7 +126,6 @@ class _ChatTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Para grupos se usa el nombre del grupo; para privados se carga el perfil del otro.
     if (chat.isGroup) {
       return _buildTile(
         context: context,
@@ -108,7 +140,9 @@ class _ChatTile extends ConsumerWidget {
     return otherAsync.when(
       loading: () => const ListTile(
         leading: CircleAvatar(backgroundColor: AppColors.darkCard),
-        title: SizedBox(height: 12, width: 100,
+        title: SizedBox(
+            height: 12,
+            width: 100,
             child: ColoredBox(color: AppColors.darkCard)),
       ),
       error: (_, _) => const SizedBox.shrink(),
@@ -129,8 +163,8 @@ class _ChatTile extends ConsumerWidget {
       'image' => '📷 Imagen',
       'video' => '🎥 Video',
       'audio' => '🎵 Audio',
-      'gif'   => '🎞️ GIF',
-      _       => msg.text,
+      'gif' => '🎞️ GIF',
+      _ => msg.text,
     };
   }
 
@@ -144,32 +178,48 @@ class _ChatTile extends ConsumerWidget {
     final time = chat.lastMessage?.timestamp ?? chat.createdAt;
     final cs = Theme.of(context).colorScheme;
 
-    return ListTile(
-      onTap: () => context.push('/chats/${chat.id}'),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: AvatarWidget(
-        photoUrl: photoUrl?.isNotEmpty == true ? photoUrl : null,
-        displayName: name,
-        uid: uid,
-        radius: 26,
-      ),
-      title: Text(
-        name,
-        style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        subtitle,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: GoogleFonts.poppins(
-            fontSize: 13, color: cs.onSurface.withAlpha(140)),
-      ),
-      trailing: Text(
-        _formatTime(time),
-        style: GoogleFonts.poppins(
-            fontSize: 11, color: cs.onSurface.withAlpha(120)),
+    return Material(
+      // Highlight visible cuando el chat está seleccionado (split view)
+      color: isSelected
+          ? AppColors.green.withAlpha(28)
+          : Colors.transparent,
+      child: ListTile(
+        onTap: () {
+          // En split view: actualizar URL sin apilar; en móvil: push normal
+          if (inSplitView) {
+            context.go('/chats/${chat.id}');
+          } else {
+            context.push('/chats/${chat.id}');
+          }
+        },
+        selected: isSelected,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: AvatarWidget(
+          photoUrl: photoUrl?.isNotEmpty == true ? photoUrl : null,
+          displayName: name,
+          uid: uid,
+          radius: 26,
+        ),
+        title: Text(
+          name,
+          style:
+              GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 15),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.poppins(
+              fontSize: 13, color: cs.onSurface.withAlpha(140)),
+        ),
+        trailing: Text(
+          _formatTime(time),
+          style: GoogleFonts.poppins(
+              fontSize: 11, color: cs.onSurface.withAlpha(120)),
+        ),
       ),
     );
   }
@@ -192,7 +242,7 @@ class _EmptyState extends StatelessWidget {
               style: GoogleFonts.poppins(
                   fontSize: 16, color: cs.onSurface.withAlpha(160))),
           const SizedBox(height: 8),
-          Text('Toca  para agregar un contacto',
+          Text('Toca + para agregar un contacto',
               style: GoogleFonts.poppins(
                   fontSize: 13, color: cs.onSurface.withAlpha(100))),
         ],

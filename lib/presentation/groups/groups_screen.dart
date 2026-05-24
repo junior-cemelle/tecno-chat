@@ -10,7 +10,18 @@ import '../../data/models/chat_model.dart';
 import '../../providers/firestore_provider.dart';
 
 class GroupsScreen extends ConsumerWidget {
-  const GroupsScreen({super.key});
+  /// Cuando es true actúa como panel de lista en GroupsSplitView (web).
+  /// Cambia la navegación a [context.go] para no apilar rutas.
+  final bool inSplitView;
+
+  /// ID del grupo actualmente seleccionado (para resaltar en la lista).
+  final String? selectedChatId;
+
+  const GroupsScreen({
+    super.key,
+    this.inSplitView = false,
+    this.selectedChatId,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -20,6 +31,7 @@ class GroupsScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text('Grupos',
             style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        automaticallyImplyLeading: false,
       ),
       body: groupsAsync.when(
         loading: () => const Center(
@@ -32,7 +44,11 @@ class GroupsScreen extends ConsumerWidget {
                 itemCount: groups.length,
                 separatorBuilder: (_, _) =>
                     const Divider(height: 1, indent: 72),
-                itemBuilder: (_, i) => _GroupTile(group: groups[i]),
+                itemBuilder: (_, i) => _GroupTile(
+                  group: groups[i],
+                  inSplitView: inSplitView,
+                  isSelected: groups[i].id == selectedChatId,
+                ),
               ),
       ),
       // FAB visible solo para profesores
@@ -54,7 +70,14 @@ class GroupsScreen extends ConsumerWidget {
 
 class _GroupTile extends StatelessWidget {
   final ChatModel group;
-  const _GroupTile({required this.group});
+  final bool inSplitView;
+  final bool isSelected;
+
+  const _GroupTile({
+    required this.group,
+    required this.inSplitView,
+    required this.isSelected,
+  });
 
   String _formatTime(DateTime dt) {
     final now = DateTime.now();
@@ -79,53 +102,69 @@ class _GroupTile extends StatelessWidget {
     };
   }
 
+  void _open(BuildContext context) {
+    // En split view (web): actualiza URL sin apilar, conserva la lista visible.
+    // En móvil: navega a la pantalla de detalle a pantalla completa.
+    if (inSplitView) {
+      context.go('/groups/${group.id}');
+    } else {
+      context.push('/chats/${group.id}');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final time = group.lastMessage?.timestamp ?? group.createdAt;
 
-    return ListTile(
-      onTap: () => context.push('/chats/${group.id}'),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: AvatarWidget(
-        photoUrl: group.groupAvatarUrl?.isNotEmpty == true
-            ? group.groupAvatarUrl
-            : null,
-        displayName: group.groupName ?? 'Grupo',
-        uid: group.id,
-        radius: 26,
-      ),
-      title: Text(
-        group.groupName ?? 'Grupo',
-        style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600, fontSize: 15),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        _lastMsg(),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: GoogleFonts.poppins(
-            fontSize: 13, color: cs.onSurface.withAlpha(140)),
-      ),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            _formatTime(time),
-            style: GoogleFonts.poppins(
-                fontSize: 11, color: cs.onSurface.withAlpha(120)),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${group.participantIds.length} miembros',
-            style: GoogleFonts.poppins(
-                fontSize: 10, color: cs.onSurface.withAlpha(100)),
-          ),
-        ],
+    return Material(
+      color: isSelected
+          ? AppColors.green.withAlpha(28)
+          : Colors.transparent,
+      child: ListTile(
+        onTap: () => _open(context),
+        selected: isSelected,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: AvatarWidget(
+          photoUrl: group.groupAvatarUrl?.isNotEmpty == true
+              ? group.groupAvatarUrl
+              : null,
+          displayName: group.groupName ?? 'Grupo',
+          uid: group.id,
+          radius: 26,
+        ),
+        title: Text(
+          group.groupName ?? 'Grupo',
+          style: GoogleFonts.poppins(
+              fontWeight: FontWeight.w600, fontSize: 15),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          _lastMsg(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.poppins(
+              fontSize: 13, color: cs.onSurface.withAlpha(140)),
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              _formatTime(time),
+              style: GoogleFonts.poppins(
+                  fontSize: 11, color: cs.onSurface.withAlpha(120)),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${group.participantIds.length} miembros',
+              style: GoogleFonts.poppins(
+                  fontSize: 10, color: cs.onSurface.withAlpha(100)),
+            ),
+          ],
+        ),
       ),
     );
   }
