@@ -10,25 +10,6 @@ Android/iOS donde aplica.
 
 ---
 
-## Capturas de pantalla
-
-Las capturas viven en `docs/screenshots/<N>.png`, una por bloque funcional.
-
-| #  | Bloque                            | Pantalla representativa             |
-|----|-----------------------------------|--------------------------------------|
-| 1  | Login y onboarding                | Login con tabs alumno/profesor       |
-| 2  | Chats privados                    | Detalle de chat 1-a-1                |
-| 3  | Grupos                            | Detalle de grupo                     |
-| 4  | Chats de asesoría                 | Detalle con banner descriptivo       |
-| 5  | Llamadas                          | Llamada activa (voz o video)         |
-| 6  | Perfil                            | Perfil propio                        |
-| 7  | Integración SII                   | Inicio académico (dashboard)         |
-| 8  | Asesorías                         | Mis asesorías (asesor) o dashboard del gerente |
-| 9  | Stories                           | Crear story                          |
-| 10 | Sidebar / shell                   | Sidebar web                          |
-
----
-
 ## Stack tecnológico
 
 ### Framework y lenguaje
@@ -81,7 +62,8 @@ Las capturas viven en `docs/screenshots/<N>.png`, una por bloque funcional.
 ## Funcionalidades
 
 ### Autenticación
-Captura: [1](docs/screenshots/1.png).
+
+![Captura 1 — Login con tabs alumno/profesor y botón dev](docs/screenshots/1.png)
 
 - **Alumnos**: login con credenciales del SII. La primera vez crea
   automáticamente la cuenta Firebase con la misma contraseña y persiste un
@@ -99,7 +81,8 @@ Captura: [1](docs/screenshots/1.png).
   `lib/presentation/auth/login_screen.dart`).
 
 ### Chats privados
-Captura: [2](docs/screenshots/2.png).
+
+![Captura 2 — Detalle de chat 1-a-1](docs/screenshots/2.png)
 
 - Chats 1-a-1 con texto, imágenes, videos, audios (Opus en web/AAC en mobile),
   GIFs y emojis con picker integrado
@@ -109,7 +92,8 @@ Captura: [2](docs/screenshots/2.png).
   lado a lado (similar a WhatsApp Web)
 
 ### Grupos
-Captura: [3](docs/screenshots/3.png).
+
+![Captura 3 — Detalle de grupo](docs/screenshots/3.png)
 
 - Solo profesores pueden crearlos; cualquier usuario puede ser miembro
 - Avatar de grupo, nombre, descripción y administración de miembros
@@ -117,7 +101,8 @@ Captura: [3](docs/screenshots/3.png).
   reproducción inline)
 
 ### Chats de asesoría
-Captura: [4](docs/screenshots/4.png).
+
+![Captura 4 — Chat de asesoría con banner descriptivo](docs/screenshots/4.png)
 
 - Sección independiente en el sidebar — no se mezcla con chats ni grupos
 - Badge identificativo en lista y appbar; banner persistente con la
@@ -126,7 +111,8 @@ Captura: [4](docs/screenshots/4.png).
   bloque de Asesorías)
 
 ### Llamadas (Agora)
-Captura: [5](docs/screenshots/5.png).
+
+![Captura 5 — Llamada activa (voz o video)](docs/screenshots/5.png)
 
 - Voz y video, soporte WebRTC en navegador y nativo en móvil
 - Pantalla de llamada entrante con aceptar/rechazar
@@ -134,13 +120,15 @@ Captura: [5](docs/screenshots/5.png).
 - Solo aplican a chats privados — grupos y asesorías no las exponen
 
 ### Stories / Avisos institucionales
-Captura: [9](docs/screenshots/9.png).
+
+![Captura 9 — Crear story](docs/screenshots/9.png)
 
 - Solo profesores pueden publicar stories
 - Cualquier alumno las ve y se marca como visto al abrirlas
 
 ### Integración con el SII
-Captura: [7](docs/screenshots/7.png).
+
+![Captura 7 — Inicio académico (dashboard SII)](docs/screenshots/7.png)
 
 Accesible desde el sidebar para alumnos. Cuatro vistas:
 - **Inicio académico** — dashboard con anillo de avance, promedios
@@ -156,7 +144,8 @@ Manejo automático de sesión expirada con flujo de **reconexión**: si el
 JWT muere, el usuario reingresa solo la contraseña sin cerrar sesión.
 
 ### Asesorías entre alumnos
-Captura: [8](docs/screenshots/8.png).
+
+![Captura 8 — Mis asesorías / dashboard del gerente](docs/screenshots/8.png)
 
 Sistema completo de tutorías académicas:
 
@@ -184,7 +173,8 @@ client-side en `AsesoriaService`):
 - Solo el gerente puede aprobar/finalizar
 
 ### Perfil
-Captura: [6](docs/screenshots/6.png).
+
+![Captura 6 — Perfil propio](docs/screenshots/6.png)
 
 - Edición de carrera, semestre, departamento (profesores), avatar
 - Sección de cuentas vinculadas (vincular/desvincular teléfono y Google)
@@ -192,7 +182,8 @@ Captura: [6](docs/screenshots/6.png).
 - Entradas contextuales a Asesorías según rol
 
 ### Layout y sidebar
-Captura: [10](docs/screenshots/10.png).
+
+![Captura 10 — Sidebar web colapsable](docs/screenshots/10.png)
 
 - Sidebar colapsable estilo glassmorphism en web; bottom navigation en móvil
 - Pestañas filtradas por rol: alumnos ven los 4 tabs SII adicionales;
