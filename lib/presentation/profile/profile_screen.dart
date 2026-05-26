@@ -1,10 +1,17 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+// ignore: unnecessary_import — necesario para TextInputFormatter abajo
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../../core/platform/recaptcha_cleanup.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/avatar_widget.dart';
 import '../../core/widgets/avatar_url_dialog.dart';
 import '../../data/models/user_model.dart';
+import '../../data/services/auth_service.dart' show AuthException;
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../core/widgets/qr_dialog.dart';
@@ -90,7 +97,14 @@ class _ProfileBody extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final surface = cs.surface;
 
-    return ListView(
+    // En web la ventana puede ser muy ancha; sin un ConstrainedBox los
+    // ListTile estiran su trailing (toggles, botones) hasta el borde derecho
+    // dejando un hueco enorme contra el título. 720px da un layout cómodo
+    // de "página de ajustes" estilo desktop sin perder densidad.
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: ListView(
       children: [
         // ── Header ─────────────────────────────────────────────────────
         Container(
@@ -189,11 +203,86 @@ class _ProfileBody extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () {},
           ),
-          ListTile(
-            leading: const Icon(Icons.lock_outline),
-            title: const Text('Privacidad'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {},
+        ]),
+        const SizedBox(height: 8),
+
+        // ── Asesorías ───────────────────────────────────────────────────
+        // Visibilidad condicional por rol:
+        //   - Alumno: Buscar asesorías (cualquier alumno) y Mis asesorías
+        //     (sirve tanto al asesor como al consultante; muestra empty si no
+        //     hay nada). Solicitar ser asesor requiere ≥4º sem.
+        //   - Teacher con isAsesoriaManager: Gestión de asesorías.
+        if (user.isStudent)
+          _Section(title: 'Asesorías', tiles: [
+            ListTile(
+              leading:
+                  const Icon(Icons.search, color: AppColors.primary),
+              title: const Text('Buscar asesorías'),
+              subtitle: Text(
+                'Encuentra una asesoría disponible y solicita unirte.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/asesorias/browse'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.fact_check_outlined,
+                  color: AppColors.primary),
+              title: const Text('Mis asesorías'),
+              subtitle: Text(
+                'Gestiona tus asesorías como asesor: solicitudes y alumnos.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/asesorias/mine'),
+            ),
+            if ((user.semester ?? 0) >= 4)
+              ListTile(
+                leading: const Icon(Icons.school_outlined,
+                    color: AppColors.primary),
+                title: const Text('Solicitar ser asesor'),
+                subtitle: Text(
+                  'Postúlate para asesorar a otros alumnos en una materia.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/asesorias/apply'),
+              ),
+          ]),
+        if (user.isTeacher && user.isAsesoriaManager)
+          _Section(title: 'Asesorías', tiles: [
+            ListTile(
+              leading: const Icon(Icons.admin_panel_settings_outlined,
+                  color: AppColors.primary),
+              title: const Text('Gestión de asesorías'),
+              subtitle: Text(
+                'Revisa solicitudes, aprueba asesores y finaliza asesorías.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/asesorias/manage'),
+            ),
+          ]),
+        if (user.isStudent ||
+            (user.isTeacher && user.isAsesoriaManager))
+          const SizedBox(height: 8),
+
+        // ── Cuentas vinculadas ──────────────────────────────────────────
+        _Section(title: 'Cuentas vinculadas', tiles: [
+          _LinkedAccountTile(
+            providerId: 'password',
+            icon: Icons.mail_outline,
+            label: 'Correo institucional',
+          ),
+          _LinkedAccountTile(
+            providerId: 'phone',
+            icon: Icons.phone_iphone_rounded,
+            label: 'Teléfono',
+          ),
+          _LinkedAccountTile(
+            providerId: 'google.com',
+            svgAsset: 'lib/assets/logos/google.svg',
+            label: 'Google',
           ),
         ]),
         const SizedBox(height: 8),
@@ -218,8 +307,11 @@ class _ProfileBody extends ConsumerWidget {
         ),
         const SizedBox(height: 24),
       ],
+        ),
+      ),
     );
   }
+
 }
 
 class _Section extends StatelessWidget {
@@ -253,7 +345,7 @@ class _Section extends StatelessWidget {
 }
 
 class _InfoTile extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
   final String label;
   final String value;
   const _InfoTile(
@@ -269,6 +361,346 @@ class _InfoTile extends StatelessWidget {
               .textTheme
               .bodyLarge
               ?.copyWith(fontWeight: FontWeight.w500)),
+    );
+  }
+}
+
+// ── Tile de cuenta vinculada (con acción de link/unlink) ─────────────────────
+
+class _LinkedAccountTile extends ConsumerStatefulWidget {
+  final String providerId; // 'password' | 'phone' | 'google.com'
+  final IconData? icon;
+  final String? svgAsset;
+  final String label;
+
+  const _LinkedAccountTile({
+    required this.providerId,
+    this.icon,
+    this.svgAsset,
+    required this.label,
+  }) : assert(icon != null || svgAsset != null,
+            'Debe proveerse icon o svgAsset');
+
+  @override
+  ConsumerState<_LinkedAccountTile> createState() => _LinkedAccountTileState();
+}
+
+class _LinkedAccountTileState extends ConsumerState<_LinkedAccountTile> {
+  bool _busy = false;
+
+  /// Devuelve el identifier visible para el provider (email/teléfono),
+  /// o null si no está vinculado.
+  String? _linkedIdentifier(User user) {
+    final info = user.providerData.where(
+      (p) => p.providerId == widget.providerId,
+    );
+    if (info.isEmpty) return null;
+    final data = info.first;
+    if (widget.providerId == 'phone') {
+      return user.phoneNumber ?? data.phoneNumber;
+    }
+    return data.email ?? user.email;
+  }
+
+  Future<void> _onLink() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      switch (widget.providerId) {
+        case 'phone':
+          await _startPhoneLinkFlow();
+          // El flujo sigue en /otp; no marcamos _busy=false aquí porque la
+          // pantalla cambia.
+          return;
+        case 'google.com':
+          await ref.read(authServiceProvider).linkGoogle();
+          await _refreshAndNotify('Google vinculado correctamente');
+          return;
+        default:
+          // 'password' no es vinculable post-registro desde aquí.
+          break;
+      }
+    } on AuthException catch (e) {
+      _snack(e.message, isError: true);
+    } catch (e) {
+      _snack('Error: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _onUnlink() async {
+    if (_busy) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Desvincular ${widget.label}'),
+        content: Text(
+          '¿Seguro que quieres desvincular tu ${widget.label.toLowerCase()}? '
+          'No podrás iniciar sesión con este método hasta volver a vincularlo.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Desvincular',
+                style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    setState(() => _busy = true);
+    try {
+      await ref.read(authServiceProvider).unlinkProvider(widget.providerId);
+      await _refreshAndNotify('${widget.label} desvinculado');
+    } on AuthException catch (e) {
+      _snack(e.message, isError: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _refreshAndNotify(String msg) async {
+    if (!mounted) return;
+    // Refresca providerData del user actual y el perfil Firestore.
+    try {
+      await FirebaseAuth.instance.currentUser?.reload();
+    } catch (_) {
+      // Si no se puede recargar, seguimos igualmente.
+    }
+    ref.invalidate(currentUserProvider);
+    _snack(msg, isError: false);
+  }
+
+  void _snack(String msg, {required bool isError}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: isError ? AppColors.error : AppColors.green,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ));
+  }
+
+  /// Abre un bottom sheet para capturar el teléfono y dispara el OTP en modo
+  /// link. Tras codeSent navegamos a /otp con linkMode=true.
+  Future<void> _startPhoneLinkFlow() async {
+    final phoneCtrl = TextEditingController();
+    final formatter = _PhoneFormatter();
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
+            decoration: BoxDecoration(
+              color: cs.surface,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: cs.onSurface.withAlpha(50),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text('Vincular teléfono',
+                    style: GoogleFonts.poppins(
+                        fontSize: 17, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text(
+                  'Te enviaremos un código SMS para confirmar.',
+                  style: GoogleFonts.poppins(
+                      fontSize: 12, color: cs.onSurface.withAlpha(140)),
+                ),
+                const SizedBox(height: 18),
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: cs.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: cs.onSurface.withAlpha(40)),
+                    ),
+                    child: Text('+52',
+                        style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600, fontSize: 15)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      maxLength: 12,
+                      inputFormatters: [formatter],
+                      style: GoogleFonts.poppins(fontSize: 15),
+                      decoration: InputDecoration(
+                        hintText: '461 000 0000',
+                        counterText: '',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide:
+                              BorderSide(color: cs.onSurface.withAlpha(40)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide:
+                              BorderSide(color: cs.onSurface.withAlpha(40)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 18),
+                SizedBox(
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final digits = phoneCtrl.text
+                          .trim()
+                          .replaceAll(RegExp(r'\D'), '');
+                      if (digits.length != 10) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                          content: Text('Ingresa 10 dígitos'),
+                          backgroundColor: AppColors.error,
+                        ));
+                        return;
+                      }
+                      Navigator.pop(ctx, '+52$digits');
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text('Enviar código',
+                        style: GoogleFonts.poppins(
+                            fontSize: 14, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    phoneCtrl.dispose();
+    if (result == null || !mounted) return;
+
+    // Disparar el OTP. onCodeSent navega a /otp en linkMode.
+    await ref.read(authServiceProvider).verifyPhone(
+      phone: result,
+      onCodeSent: (vid) {
+        clearRecaptchaWidgets();
+        if (!mounted) return;
+        context.push('/otp', extra: {
+          'verificationId': vid,
+          'phone': result,
+          'linkMode': true,
+          'returnTo': '/profile',
+        });
+      },
+      onError: (msg) {
+        if (mounted) _snack(msg, isError: true);
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Escuchamos userChanges() (no solo authStateChanges) para que el tile
+    // re-renderice automáticamente tras linkWithCredential/unlink — si no,
+    // habría que hacer hot reload para ver el estado actualizado.
+    final userAsync = ref.watch(firebaseUserChangesProvider);
+    final user = switch (userAsync) {
+      AsyncData(:final value) => value,
+      _ => FirebaseAuth.instance.currentUser,
+    };
+    if (user == null) return const SizedBox.shrink();
+
+    final identifier = _linkedIdentifier(user);
+    final isLinked = identifier != null;
+    // 'password' es el método principal — no se permite desvincular desde UI
+    // (al menos en este iteración) para no romper el login del usuario.
+    final canUnlink = isLinked && widget.providerId != 'password';
+    final canLink = !isLinked && widget.providerId != 'password';
+
+    return ListTile(
+      leading: widget.svgAsset != null
+          ? SvgPicture.asset(widget.svgAsset!, width: 24, height: 24)
+          : Icon(widget.icon),
+      title: Text(widget.label),
+      subtitle: Text(
+        identifier ?? 'No vinculado',
+        style: TextStyle(
+          color: isLinked ? null : Theme.of(context).hintColor,
+          fontStyle: isLinked ? null : FontStyle.italic,
+        ),
+      ),
+      trailing: _busy
+          ? const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            )
+          : canLink
+              ? TextButton(
+                  onPressed: _onLink,
+                  child: const Text('Vincular'),
+                )
+              : canUnlink
+                  ? IconButton(
+                      icon: const Icon(Icons.link_off,
+                          color: AppColors.error, size: 20),
+                      tooltip: 'Desvincular',
+                      onPressed: _onUnlink,
+                    )
+                  : const Icon(Icons.check_circle,
+                      color: AppColors.green, size: 20),
+    );
+  }
+}
+
+/// Formatea 10 dígitos como "XXX XXX XXXX" mientras el usuario escribe.
+class _PhoneFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final capped = digits.length > 10 ? digits.substring(0, 10) : digits;
+    final buf = StringBuffer();
+    for (int i = 0; i < capped.length; i++) {
+      if (i == 3 || i == 6) buf.write(' ');
+      buf.write(capped[i]);
+    }
+    final formatted = buf.toString();
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

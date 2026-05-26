@@ -43,22 +43,37 @@ final messagesStreamProvider =
   return ref.read(firestoreServiceProvider).watchMessagesList(chatId);
 });
 
-/// Stream de chats privados únicamente (excluye grupos).
+/// Stream de chats privados (1-a-1) únicamente. Excluye grupos y asesorías.
 final privateChatsStreamProvider = StreamProvider<List<ChatModel>>((ref) {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) return Stream.value([]);
   return ref
       .read(firestoreServiceProvider)
       .watchChats(uid)
-      .map((chats) => chats.where((c) => !c.isGroup).toList());
+      .map((chats) =>
+          chats.where((c) => c.type == ChatType.private).toList());
 });
 
-/// Stream de grupos del usuario (filtra type == 'group' en cliente).
+/// Stream de grupos del usuario (type == 'group'). Excluye asesorías.
 final groupsStreamProvider = StreamProvider<List<ChatModel>>((ref) {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) return Stream.value([]);
   return ref
       .read(firestoreServiceProvider)
       .watchChats(uid)
-      .map((chats) => chats.where((c) => c.isGroup).toList());
+      .map((chats) =>
+          chats.where((c) => c.type == ChatType.group).toList());
+});
+
+/// Stream de chats de asesoría del usuario (type == 'asesoria'). Aplica
+/// tanto al asesor como a los alumnos consultantes que estén en
+/// `participantIds`.
+final asesoriaChatsStreamProvider = StreamProvider<List<ChatModel>>((ref) {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return Stream.value([]);
+  return ref
+      .read(firestoreServiceProvider)
+      .watchChats(uid)
+      .map((chats) =>
+          chats.where((c) => c.type == ChatType.asesoria).toList());
 });

@@ -9,7 +9,7 @@ import '../../core/widgets/avatar_url_dialog.dart';
 import '../../data/models/user_model.dart';
 import '../../providers/auth_provider.dart';
 
-const _careers = [
+const kStudentCareers = [
   'Ingeniería en Sistemas Computacionales',
   'Ingeniería Industrial',
   'Ingeniería Electrónica',
@@ -279,7 +279,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                           key: ValueKey('career_$_career'),
                           initialValue: _career,
                           isExpanded: true,
-                          items: _careers
+                          items: kStudentCareers
                               .map((c) => DropdownMenuItem(
                                   value: c, child: Text(c)))
                               .toList(),
@@ -294,9 +294,12 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                         label: 'Semestre',
                         child: DropdownButtonFormField<int>(
                           key: ValueKey('semester_$_semester'),
-                          initialValue: _semester,
+                          // El SII puede reportar semestres > 9 para carreras
+                          // largas o alumnos en extensión; 15 cubre todos los
+                          // casos realistas en TecNM.
+                          initialValue: _semester.clamp(1, 15),
                           items: List.generate(
-                            9,
+                            15,
                             (i) => DropdownMenuItem(
                                 value: i + 1,
                                 child: Text('${i + 1}° Semestre')),

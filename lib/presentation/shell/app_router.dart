@@ -17,8 +17,18 @@ import '../groups/groups_split_view.dart';
 import '../groups/create_group_screen.dart';
 import '../groups/group_info_screen.dart';
 import '../stories/create_story_screen.dart';
+import '../asesorias/apply_advisor_screen.dart';
+import '../asesorias/asesoria_chats_screen.dart';
+import '../asesorias/asesoria_chats_split_view.dart';
+import '../asesorias/browse_asesorias_screen.dart';
+import '../asesorias/manager_dashboard_screen.dart';
+import '../asesorias/my_asesorias_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/edit_profile_screen.dart';
+import '../sii/sii_calificaciones_screen.dart';
+import '../sii/sii_dashboard_screen.dart';
+import '../sii/sii_horarios_screen.dart';
+import '../sii/sii_kardex_screen.dart';
 import 'main_shell.dart';
 
 class _AuthNotifier extends ChangeNotifier {
@@ -43,8 +53,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!loggedIn && path != '/login' && path != '/otp') return '/login';
 
       // Con sesión activa y aún en /login u /otp: salir hacia /chats.
-      // MainShell se encarga de redirigir a /setup si no hay perfil.
-      if (loggedIn && (path == '/login' || path == '/otp')) return '/chats';
+      // EXCEPCIÓN: /otp en linkMode es para vincular teléfono post-registro,
+      // ahí el usuario está logueado por diseño y NO debe redirigirse.
+      if (loggedIn && (path == '/login' || path == '/otp')) {
+        if (path == '/otp') {
+          final extra = state.extra;
+          if (extra is Map && extra['linkMode'] == true) return null;
+        }
+        return '/chats';
+      }
 
       return null;
     },
@@ -56,10 +73,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/otp',
         builder: (_, state) {
-          final extra = Map<String, String>.from(state.extra as Map);
+          final extra = Map<String, dynamic>.from(state.extra as Map);
           return OtpScreen(
-            verificationId: extra['verificationId']!,
-            phone: extra['phone']!,
+            verificationId: extra['verificationId'] as String,
+            phone: extra['phone'] as String,
+            linkMode: extra['linkMode'] as bool? ?? false,
+            returnTo: extra['returnTo'] as String? ?? '/profile',
           );
         },
       ),
@@ -90,6 +109,26 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/create-story',
         builder: (_, _) => const CreateStoryScreen(),
+      ),
+      // Asesorías: alumno solicita ser asesor
+      GoRoute(
+        path: '/asesorias/apply',
+        builder: (_, _) => const ApplyAdvisorScreen(),
+      ),
+      // Asesorías: alumno busca asesorías disponibles
+      GoRoute(
+        path: '/asesorias/browse',
+        builder: (_, _) => const BrowseAsesoriasScreen(),
+      ),
+      // Asesorías: vista del asesor (mis asesorías + solicitudes entrantes)
+      GoRoute(
+        path: '/asesorias/mine',
+        builder: (_, _) => const MyAsesoriasScreen(),
+      ),
+      // Asesorías: dashboard del gerente
+      GoRoute(
+        path: '/asesorias/manage',
+        builder: (_, _) => const ManagerDashboardScreen(),
       ),
       // Pantalla de llamada activa (voz o video)
       GoRoute(
@@ -170,6 +209,53 @@ final routerProvider = Provider<GoRouter>((ref) {
                 GoRoute(
                   path: 'edit',
                   builder: (_, _) => const EditProfileScreen(),
+                ),
+              ],
+            ),
+          ]),
+          // ── Branches SII (solo se exponen en sidebar para alumnos) ──────
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: '/sii/dashboard',
+              builder: (_, _) => const SiiDashboardScreen(),
+            ),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: '/sii/calificaciones',
+              builder: (_, _) => const SiiCalificacionesScreen(),
+            ),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: '/sii/kardex',
+              builder: (_, _) => const SiiKardexScreen(),
+            ),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: '/sii/horarios',
+              builder: (_, _) => const SiiHorariosScreen(),
+            ),
+          ]),
+          // ── Branch 8: chats de asesoría ─────────────────────────────────
+          // En web split view (lista + detalle), en móvil lista normal y el
+          // detalle se empuja como pantalla completa reutilizando ChatDetailScreen.
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: '/asesoria-chats',
+              builder: (_, _) => kIsWeb
+                  ? const AsesoriaChatsSplitView()
+                  : const AsesoriaChatsScreen(),
+              routes: [
+                GoRoute(
+                  path: ':chatId',
+                  builder: (_, state) {
+                    final id = state.pathParameters['chatId']!;
+                    return kIsWeb
+                        ? AsesoriaChatsSplitView(selectedChatId: id)
+                        : ChatDetailScreen(chatId: id);
+                  },
                 ),
               ],
             ),
