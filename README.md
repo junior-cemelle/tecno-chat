@@ -10,6 +10,25 @@ Android/iOS donde aplica.
 
 ---
 
+## Capturas de pantalla
+
+Las capturas viven en `docs/screenshots/<N>.png`, una por bloque funcional.
+
+| #  | Bloque                            | Pantalla representativa             |
+|----|-----------------------------------|--------------------------------------|
+| 1  | Login y onboarding                | Login con tabs alumno/profesor       |
+| 2  | Chats privados                    | Detalle de chat 1-a-1                |
+| 3  | Grupos                            | Detalle de grupo                     |
+| 4  | Chats de asesoría                 | Detalle con banner descriptivo       |
+| 5  | Llamadas                          | Llamada activa (voz o video)         |
+| 6  | Perfil                            | Perfil propio                        |
+| 7  | Integración SII                   | Inicio académico (dashboard)         |
+| 8  | Asesorías                         | Mis asesorías (asesor) o dashboard del gerente |
+| 9  | Stories                           | Crear story                          |
+| 10 | Sidebar / shell                   | Sidebar web                          |
+
+---
+
 ## Stack tecnológico
 
 ### Framework y lenguaje
@@ -62,6 +81,8 @@ Android/iOS donde aplica.
 ## Funcionalidades
 
 ### Autenticación
+Captura: [1](docs/screenshots/1.png).
+
 - **Alumnos**: login con credenciales del SII. La primera vez crea
   automáticamente la cuenta Firebase con la misma contraseña y persiste un
   perfil parcial (nombre, número de control, foto institucional, semestre).
@@ -77,29 +98,50 @@ Android/iOS donde aplica.
   envolviendo el bloque en `if (kDebugMode) ...[` (ver
   `lib/presentation/auth/login_screen.dart`).
 
-### Chats y comunicación
+### Chats privados
+Captura: [2](docs/screenshots/2.png).
+
 - Chats 1-a-1 con texto, imágenes, videos, audios (Opus en web/AAC en mobile),
   GIFs y emojis con picker integrado
-- Grupos (solo crea profesor) con avatar, descripción, lista de miembros
-- Chats de **asesoría** — sección independiente con badge identificativo;
-  combinan vista grupal con contexto académico (banner persistente con
-  materia, semestre objetivo y capacidad)
-- Lista de chats con scroll-to-bottom, marca de leído, último mensaje y
-  formato relativo de tiempo
+- Lista con scroll-to-bottom, marca de leído, último mensaje y formato
+  relativo de tiempo
 - Layout **split view** en web: lista de conversaciones + panel de detalle
   lado a lado (similar a WhatsApp Web)
 
+### Grupos
+Captura: [3](docs/screenshots/3.png).
+
+- Solo profesores pueden crearlos; cualquier usuario puede ser miembro
+- Avatar de grupo, nombre, descripción y administración de miembros
+- Mismo motor de mensajería que los chats privados (texto + media +
+  reproducción inline)
+
+### Chats de asesoría
+Captura: [4](docs/screenshots/4.png).
+
+- Sección independiente en el sidebar — no se mezcla con chats ni grupos
+- Badge identificativo en lista y appbar; banner persistente con la
+  materia, semestre objetivo y capacidad
+- Se crean perezosamente cuando el asesor acepta a su primer alumno (ver
+  bloque de Asesorías)
+
 ### Llamadas (Agora)
+Captura: [5](docs/screenshots/5.png).
+
 - Voz y video, soporte WebRTC en navegador y nativo en móvil
 - Pantalla de llamada entrante con aceptar/rechazar
 - Mute/cámara toggle, indicador de conectado
 - Solo aplican a chats privados — grupos y asesorías no las exponen
 
 ### Stories / Avisos institucionales
+Captura: [9](docs/screenshots/9.png).
+
 - Solo profesores pueden publicar stories
 - Cualquier alumno las ve y se marca como visto al abrirlas
 
 ### Integración con el SII
+Captura: [7](docs/screenshots/7.png).
+
 Accesible desde el sidebar para alumnos. Cuatro vistas:
 - **Inicio académico** — dashboard con anillo de avance, promedios
   (ponderado/aritmético), distribución de materias y métricas de créditos
@@ -114,6 +156,8 @@ Manejo automático de sesión expirada con flujo de **reconexión**: si el
 JWT muere, el usuario reingresa solo la contraseña sin cerrar sesión.
 
 ### Asesorías entre alumnos
+Captura: [8](docs/screenshots/8.png).
+
 Sistema completo de tutorías académicas:
 
 **Roles:**
@@ -140,42 +184,53 @@ client-side en `AsesoriaService`):
 - Solo el gerente puede aprobar/finalizar
 
 ### Perfil
+Captura: [6](docs/screenshots/6.png).
+
 - Edición de carrera, semestre, departamento (profesores), avatar
 - Sección de cuentas vinculadas (vincular/desvincular teléfono y Google)
 - QR personal compartible para que otros te agreguen
 - Entradas contextuales a Asesorías según rol
 
+### Layout y sidebar
+Captura: [10](docs/screenshots/10.png).
+
+- Sidebar colapsable estilo glassmorphism en web; bottom navigation en móvil
+- Pestañas filtradas por rol: alumnos ven los 4 tabs SII adicionales;
+  profesores solo Chats, Grupos, Asesorías, Llamadas y Perfil
+- Separadores visuales agrupan las secciones (comunicación / académico /
+  perfil)
+
 ---
 
 ## Estructura de pantallas
 
-| Ruta                          | Pantalla                          | Acceso                          |
-|-------------------------------|-----------------------------------|---------------------------------|
-| `/login`                      | Login con tabs alumno/profesor    | Pública                         |
-| `/otp`                        | Verificación OTP                  | Pública (con verificationId)    |
-| `/setup`                      | Setup de perfil post-registro     | Autenticado, sin perfil         |
-| `/chats`                      | Lista de chats privados           | Autenticado                     |
-| `/chats/:chatId`              | Detalle de chat                   | Participante                    |
-| `/groups`                     | Lista de grupos                   | Autenticado                     |
-| `/groups/:chatId`             | Detalle de grupo                  | Participante                    |
-| `/asesoria-chats`             | Lista de chats de asesoría        | Participante en alguna          |
-| `/asesoria-chats/:chatId`     | Detalle de chat de asesoría       | Participante                    |
-| `/calls`                      | Historial de llamadas             | Autenticado                     |
-| `/call`                       | Pantalla de llamada activa        | Llamada en curso                |
-| `/incoming-call`              | Llamada entrante                  | Receptor                        |
-| `/profile`                    | Perfil propio                     | Autenticado                     |
-| `/profile/edit`               | Editar perfil                     | Dueño                           |
-| `/sii/dashboard`              | Inicio académico                  | Alumno                          |
-| `/sii/calificaciones`         | Calificaciones por periodo        | Alumno                          |
-| `/sii/kardex`                 | Kárdex histórico                  | Alumno                          |
-| `/sii/horarios`               | Horario semanal                   | Alumno                          |
-| `/asesorias/apply`            | Postular como asesor              | Alumno ≥4º sem                  |
-| `/asesorias/browse`           | Buscar asesorías                  | Alumno                          |
-| `/asesorias/mine`             | Mis asesorías (asesor)            | Alumno                          |
-| `/asesorias/manage`           | Dashboard del gerente             | Profesor con `isAsesoriaManager`|
-| `/create-group`               | Crear grupo                       | Profesor                        |
-| `/group-info/:chatId`         | Info/ajustes de grupo             | Miembro                         |
-| `/create-story`               | Crear story                       | Profesor                        |
+| Ruta                          | Pantalla                          | Acceso                          | Captura |
+|-------------------------------|-----------------------------------|---------------------------------|---------|
+| `/login`                      | Login con tabs alumno/profesor    | Pública                         | 1       |
+| `/otp`                        | Verificación OTP                  | Pública (con verificationId)    | 1       |
+| `/setup`                      | Setup de perfil post-registro     | Autenticado, sin perfil         | 1       |
+| `/chats`                      | Lista de chats privados           | Autenticado                     | 2       |
+| `/chats/:chatId`              | Detalle de chat                   | Participante                    | 2       |
+| `/groups`                     | Lista de grupos                   | Autenticado                     | 3       |
+| `/groups/:chatId`             | Detalle de grupo                  | Participante                    | 3       |
+| `/asesoria-chats`             | Lista de chats de asesoría        | Participante en alguna          | 4       |
+| `/asesoria-chats/:chatId`     | Detalle de chat de asesoría       | Participante                    | 4       |
+| `/calls`                      | Historial de llamadas             | Autenticado                     | 5       |
+| `/call`                       | Pantalla de llamada activa        | Llamada en curso                | 5       |
+| `/incoming-call`              | Llamada entrante                  | Receptor                        | 5       |
+| `/profile`                    | Perfil propio                     | Autenticado                     | 6       |
+| `/profile/edit`               | Editar perfil                     | Dueño                           | 6       |
+| `/sii/dashboard`              | Inicio académico                  | Alumno                          | 7       |
+| `/sii/calificaciones`         | Calificaciones por periodo        | Alumno                          | 7       |
+| `/sii/kardex`                 | Kárdex histórico                  | Alumno                          | 7       |
+| `/sii/horarios`               | Horario semanal                   | Alumno                          | 7       |
+| `/asesorias/apply`            | Postular como asesor              | Alumno ≥4º sem                  | 8       |
+| `/asesorias/browse`           | Buscar asesorías                  | Alumno                          | 8       |
+| `/asesorias/mine`             | Mis asesorías (asesor)            | Alumno                          | 8       |
+| `/asesorias/manage`           | Dashboard del gerente             | Profesor con `isAsesoriaManager`| 8       |
+| `/create-group`               | Crear grupo                       | Profesor                        | 3       |
+| `/group-info/:chatId`         | Info/ajustes de grupo             | Miembro                         | 3       |
+| `/create-story`               | Crear story                       | Profesor                        | 9       |
 
 ---
 
