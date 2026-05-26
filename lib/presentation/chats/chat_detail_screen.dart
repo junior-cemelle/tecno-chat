@@ -396,21 +396,24 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
               body: Center(child: Text('Chat no encontrado')));
         }
 
-        final otherUid = chat.isGroup
+        // Tanto grupos como asesorías usan groupName/groupAvatar; solo el chat
+        // privado resuelve el "otro" usuario para mostrar nombre/avatar.
+        final otherUid = chat.isMultiparty
             ? ''
             : chat.participantIds.firstWhere(
                 (id) => id != _myUid,
                 orElse: () => '',
               );
 
-        final title = chat.isGroup
-            ? (chat.groupName ?? 'Grupo')
+        final title = chat.isMultiparty
+            ? (chat.groupName ??
+                (chat.isAsesoria ? 'Asesoría' : 'Grupo'))
             : switch (ref.watch(userProfileProvider(otherUid))) {
                 AsyncData(value: final u) when u != null => u.displayName,
                 _ => 'Usuario',
               };
 
-        final photoUrl = chat.isGroup
+        final photoUrl = chat.isMultiparty
             ? chat.groupAvatarUrl
             : switch (ref.watch(userProfileProvider(otherUid))) {
                 AsyncData(value: final u)
@@ -427,19 +430,58 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
             automaticallyImplyLeading: !widget.inSplitView,
             title: Row(
               children: [
-                AvatarWidget(
-                  photoUrl: photoUrl,
-                  displayName: title,
-                  uid: chat.isGroup ? chat.id : otherUid,
-                  radius: 18,
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    AvatarWidget(
+                      photoUrl: photoUrl,
+                      displayName: title,
+                      uid: chat.isMultiparty ? chat.id : otherUid,
+                      radius: 18,
+                    ),
+                    // Badge "graduación" en asesorías para reforzar el tipo
+                    if (chat.isAsesoria)
+                      Positioned(
+                        right: -2,
+                        bottom: -2,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: Theme.of(context).appBarTheme.backgroundColor
+                                    ?? Theme.of(context).colorScheme.surface,
+                                width: 1.5),
+                          ),
+                          child: const Icon(Icons.school_outlined,
+                              size: 9, color: Colors.white),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    title,
-                    style: GoogleFonts.poppins(
-                        fontSize: 15, fontWeight: FontWeight.w600),
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        title,
+                        style: GoogleFonts.poppins(
+                            fontSize: 15, fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (chat.isAsesoria)
+                        Text(
+                          'Chat de asesoría · ${chat.participantIds.length} participantes',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.poppins(
+                              fontSize: 10.5,
+                              color: AppColors.primary.withAlpha(220)),
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -452,8 +494,8 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
                   onPressed: () =>
                       context.push('/group-info/${chat.id}'),
                 ),
-              // Llamadas solo en chats privados
-              if (!chat.isGroup) ...[
+              // Llamadas solo en chats privados (no en grupos ni asesorías)
+              if (chat.type == ChatType.private) ...[
                 IconButton(
                   icon: const Icon(Icons.videocam_outlined),
                   tooltip: 'Videollamada',
@@ -526,6 +568,12 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
       AsyncValue<List<MessageModel>> msgsAsync, ChatModel chat) {
     return Column(
       children: [
+        // Banner contextual de asesoría — muestra la descripción (materia +
+        // semestre + capacidad) que se guardó al crear el chat. Persistente
+        // mientras dura el chat para que cualquier participante tenga el
+        // contexto siempre a la vista.
+        if (chat.isAsesoria && (chat.description ?? '').isNotEmpty)
+          _AsesoriaBanner(description: chat.description!),
         Expanded(
           child: _MessageList(
             msgsAsync: msgsAsync,
@@ -533,7 +581,7 @@ class _ChatDetailState extends ConsumerState<ChatDetailScreen>
             scrollCtrl: _scrollCtrl,
             onLoaded: _scrollToBottom,
             onNewMessages: _markRead,
-            isGroup: chat.isGroup,
+            isGroup: chat.isMultiparty,
           ),
         ),
         _InputBar(
@@ -1502,6 +1550,48 @@ class _MediaOption extends StatelessWidget {
           const SizedBox(height: 8),
           Text(label,
               style: GoogleFonts.poppins(fontSize: 12, color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Banner contextual al tope de un chat tipo `asesoria` con la descripción
+/// guardada al crear el chat (materia, semestre objetivo, capacidad).
+class _AsesoriaBanner extends StatelessWidget {
+  final String description;
+  const _AsesoriaBanner({required this.description});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withAlpha(22),
+        border: Border(
+          bottom: BorderSide(
+            color: AppColors.primary.withAlpha(60),
+            width: 0.5,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.school_outlined,
+              size: 16, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.poppins(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.primary),
+            ),
+          ),
         ],
       ),
     );

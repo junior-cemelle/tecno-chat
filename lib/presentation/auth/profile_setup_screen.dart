@@ -449,10 +449,10 @@ class _StudentFields extends StatelessWidget {
         const SizedBox(height: 12),
         _GlassDropdown<int>(
           key: ValueKey('semester_$semester'),
-          initialValue: semester,
+          initialValue: semester.clamp(1, 15),
           label: 'Semestre',
           icon: Icons.calendar_today_outlined,
-          items: List.generate(9, (i) => i + 1),
+          items: List.generate(15, (i) => i + 1),
           itemLabel: (s) => '$s° Semestre',
           onChanged: (v) => onSemesterChanged(v ?? 1),
         ),

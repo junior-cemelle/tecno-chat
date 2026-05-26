@@ -1,19 +1,29 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
+import '../../data/services/auth_service.dart' show AuthException;
 import '../../providers/auth_provider.dart';
 
 class OtpScreen extends ConsumerStatefulWidget {
   final String verificationId;
   final String phone;
+  /// Si true, el OTP se usa para VINCULAR el teléfono al usuario ya logueado
+  /// (post-registro). Si false, es para hacer login con teléfono.
+  final bool linkMode;
+  /// Ruta a la que regresar tras vincular exitosamente. Solo aplica si
+  /// [linkMode] = true. Por defecto vuelve a /profile.
+  final String returnTo;
 
   const OtpScreen({
     super.key,
     required this.verificationId,
     required this.phone,
+    this.linkMode = false,
+    this.returnTo = '/profile',
   });
 
   @override
@@ -73,17 +83,38 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
     setState(() => _loading = true);
 
     try {
-      final cred = await ref
-          .read(authServiceProvider)
-          .signInWithOtp(widget.verificationId, _otp);
+      final auth = ref.read(authServiceProvider);
 
-      final uid = cred.user?.uid;
-      if (uid == null || !mounted) return;
-
-      final exists = await ref.read(authServiceProvider).userProfileExists(uid);
-
-      if (!mounted) return;
-      context.go(exists ? '/chats' : '/setup');
+      if (widget.linkMode) {
+        // Modo VINCULAR: construir el credential y linkearlo al user actual.
+        final credential = PhoneAuthProvider.credential(
+          verificationId: widget.verificationId,
+          smsCode: _otp,
+        );
+        await auth.linkPhoneCredential(credential);
+        await FirebaseAuth.instance.currentUser?.reload();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Teléfono vinculado correctamente'),
+          backgroundColor: AppColors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10)),
+        ));
+        context.go(widget.returnTo);
+      } else {
+        // Modo LOGIN: valida que el teléfono ya esté vinculado a un perfil.
+        await auth.signInWithOtpForLogin(widget.verificationId, _otp);
+        if (!mounted) return;
+        context.go('/chats');
+      }
+    } on AuthException catch (e) {
+      if (mounted) {
+        _snack(e.message);
+        for (final c in _controllers) { c.clear(); }
+        _focusNodes[0].requestFocus();
+        setState(() => _loading = false);
+      }
     } catch (_) {
       if (mounted) {
         _snack('Código incorrecto. Intenta de nuevo.');

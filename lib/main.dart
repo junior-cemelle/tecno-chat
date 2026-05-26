@@ -10,6 +10,8 @@ import 'core/platform/media_kit_init.dart';
 import 'core/platform/url_strategy.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
+import 'data/services/sii_token_storage.dart';
+import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'presentation/shell/app_router.dart';
 
@@ -24,7 +26,15 @@ void main() async {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4b2dtbmdsa2lla3JwanJ1bGVwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwMzA4NTYsImV4cCI6MjA5NDYwNjg1Nn0.gl8I77j40lGJ6aDxnYnFrnI0jIw2GoYoeK1ja25FNbg',
   );
   await initializeDateFormatting('es');
-  runApp(const ProviderScope(child: _Bootstrap()));
+  // SiiTokenStorage requiere inicializar SharedPreferences antes de runApp
+  // (es async); por eso lo hacemos aquí y lo inyectamos vía override.
+  final siiTokens = await SiiTokenStorage.create();
+  runApp(ProviderScope(
+    overrides: [
+      siiTokenStorageProvider.overrideWithValue(siiTokens),
+    ],
+    child: const _Bootstrap(),
+  ));
 }
 
 /// Pantalla puente que preloadea las fuentes de Google antes de mostrar la app

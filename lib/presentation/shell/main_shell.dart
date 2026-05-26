@@ -21,28 +21,78 @@ class MainShell extends ConsumerStatefulWidget {
 }
 
 class _MainShellState extends ConsumerState<MainShell> {
-  static const _tabs = [
+  // Las branches del router están en este orden:
+  //   0:Chats 1:Grupos 2:Llamadas 3:Perfil
+  //   4:Dashboard 5:Calif 6:Kardex 7:Horarios 8:Asesorías-chats
+  // El sidebar reordena (Asesorías entre Grupos y Llamadas; Perfil al final).
+  static const _commonTabs = [
     _TabItem(
+      branchIndex: 0,
       icon: Icons.chat_bubble_outline,
       activeIcon: Icons.chat_bubble,
       label: 'Chats',
     ),
     _TabItem(
+      branchIndex: 1,
       icon: Icons.group_outlined,
       activeIcon: Icons.group,
       label: 'Grupos',
     ),
     _TabItem(
+      branchIndex: 8,
+      icon: Icons.school_outlined,
+      activeIcon: Icons.school,
+      label: 'Asesorías',
+    ),
+    _TabItem(
+      branchIndex: 2,
       icon: Icons.call_outlined,
       activeIcon: Icons.call,
       label: 'Llamadas',
     ),
+  ];
+
+  static const _studentSiiTabs = [
     _TabItem(
-      icon: Icons.person_outline,
-      activeIcon: Icons.person,
-      label: 'Perfil',
+      branchIndex: 4,
+      icon: Icons.dashboard_outlined,
+      activeIcon: Icons.dashboard_rounded,
+      label: 'Sobre mí',
+      dividerBefore: true,
+    ),
+    _TabItem(
+      branchIndex: 5,
+      icon: Icons.grading_outlined,
+      activeIcon: Icons.grading,
+      label: 'Calificaciones',
+    ),
+    _TabItem(
+      branchIndex: 6,
+      icon: Icons.menu_book_outlined,
+      activeIcon: Icons.menu_book,
+      label: 'Kárdex',
+    ),
+    _TabItem(
+      branchIndex: 7,
+      icon: Icons.calendar_view_week_outlined,
+      activeIcon: Icons.calendar_view_week,
+      label: 'Horarios',
     ),
   ];
+
+  static const _profileTab = _TabItem(
+    branchIndex: 3,
+    icon: Icons.person_outline,
+    activeIcon: Icons.person,
+    label: 'Perfil',
+    dividerBefore: true,
+  );
+
+  List<_TabItem> _visibleTabs(bool isStudent) => [
+        ..._commonTabs,
+        if (isStudent) ..._studentSiiTabs,
+        _profileTab,
+      ];
 
   // Ancho del sidebar
   static const double _expandedWidth = 220;
@@ -74,11 +124,31 @@ class _MainShellState extends ConsumerState<MainShell> {
   Future<void> _checkProfile() async {
     final fbUser = FirebaseAuth.instance.currentUser;
     if (fbUser == null) return;
-    final exists = await ref
-        .read(authServiceProvider)
-        .userProfileExists(fbUser.uid);
+
+    // Retry con backoff porque el redirect a /chats puede dispararse en cuanto
+    // `createUserWithEmailAndPassword` cambia el authState — ANTES de que
+    // `_createStudentProfileFromSii` termine de escribir el doc en Firestore.
+    // Sin retry, este check vería `exists=false` por ~200-500ms y mandaría
+    // al alumno recién creado a /setup en vez de a /chats.
+    const delaysMs = [0, 250, 500, 750, 1000, 1500];
+    for (final delay in delaysMs) {
+      if (delay > 0) await Future.delayed(Duration(milliseconds: delay));
+      if (!mounted) return;
+      final exists = await ref
+          .read(authServiceProvider)
+          .userProfileExists(fbUser.uid);
+      if (exists) {
+        // El FutureProvider ya pudo haber cacheado `null` (porque corrió antes
+        // de que _createStudentProfileFromSii terminara de escribir el doc).
+        // Lo invalidamos para que vuelva a leer Firestore y el shell salga
+        // del CircularProgressIndicator.
+        ref.invalidate(currentUserProvider);
+        return;
+      }
+    }
+
     if (!mounted) return;
-    if (!exists) context.go('/setup');
+    context.go('/setup');
   }
 
   @override
@@ -97,33 +167,80 @@ class _MainShellState extends ConsumerState<MainShell> {
     });
 
     final userAsync = ref.watch(currentUserProvider);
-    final hasProfile = switch (userAsync) {
-      AsyncData(value: final u) when u != null => true,
-      _ => false,
-    };
 
-    if (!hasProfile) {
-      return const Scaffold(
+    return userAsync.when(
+      loading: () => const Scaffold(
         backgroundColor: AppColors.darkBg,
         body: Center(child: CircularProgressIndicator(color: AppColors.green)),
-      );
-    }
+      ),
+      error: (error, stack) => Scaffold(
+        backgroundColor: AppColors.darkBg,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, size: 60, color: AppColors.error),
+                const SizedBox(height: 16),
+                Text(
+                  'Error cargando tu perfil. Intenta reiniciar la app.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    ref.invalidate(currentUserProvider);
+                  },
+                  child: const Text('Reintentar'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      data: (user) {
+        if (user == null) {
+          return const Scaffold(
+            backgroundColor: AppColors.darkBg,
+            body: Center(
+              child: CircularProgressIndicator(color: AppColors.green),
+            ),
+          );
+        }
+        final tabs = _visibleTabs(user.isStudent);
+        return kIsWeb
+            ? _buildWebLayout(tabs)
+            : _buildMobileLayout(tabs);
+      },
+    );
+  }
 
-    return kIsWeb ? _buildWebLayout() : _buildMobileLayout();
+  /// Encuentra el índice visual del tab cuya branch coincide con la activa.
+  /// Si la branch actual no es visible (caso raro: profesor en branch SII),
+  /// devuelve 0 para no romper el NavigationBar.
+  int _visualIndexForBranch(List<_TabItem> tabs, int branchIndex) {
+    final i = tabs.indexWhere((t) => t.branchIndex == branchIndex);
+    return i < 0 ? 0 : i;
   }
 
   // ── Móvil: BottomNavigationBar ─────────────────────────────────────────────
 
-  Widget _buildMobileLayout() {
+  Widget _buildMobileLayout(List<_TabItem> tabs) {
+    final selected = _visualIndexForBranch(tabs, widget.shell.currentIndex);
     return Scaffold(
       body: widget.shell,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: widget.shell.currentIndex,
-        onDestinationSelected: (i) => widget.shell.goBranch(
-          i,
-          initialLocation: i == widget.shell.currentIndex,
-        ),
-        destinations: _tabs
+        selectedIndex: selected,
+        onDestinationSelected: (i) {
+          final branch = tabs[i].branchIndex;
+          widget.shell.goBranch(
+            branch,
+            initialLocation: branch == widget.shell.currentIndex,
+          );
+        },
+        destinations: tabs
             .map(
               (t) => NavigationDestination(
                 icon: Icon(t.icon),
@@ -138,10 +255,11 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   // ── Web: Sidebar de glassmorphism colapsable ───────────────────────────────
 
-  Widget _buildWebLayout() {
+  Widget _buildWebLayout(List<_TabItem> tabs) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sidebarWidth = _sidebarCollapsed ? _collapsedWidth : _expandedWidth;
+    final selected = _visualIndexForBranch(tabs, widget.shell.currentIndex);
 
     return Scaffold(
       body: Stack(
@@ -185,12 +303,15 @@ class _MainShellState extends ConsumerState<MainShell> {
             width: sidebarWidth,
             child: _GlassSidebar(
               collapsed: _sidebarCollapsed,
-              tabs: _tabs,
-              currentIndex: widget.shell.currentIndex,
-              onTabSelected: (i) => widget.shell.goBranch(
-                i,
-                initialLocation: i == widget.shell.currentIndex,
-              ),
+              tabs: tabs,
+              currentIndex: selected,
+              onTabSelected: (i) {
+                final branch = tabs[i].branchIndex;
+                widget.shell.goBranch(
+                  branch,
+                  initialLocation: branch == widget.shell.currentIndex,
+                );
+              },
               onToggle: () =>
                   setState(() => _sidebarCollapsed = !_sidebarCollapsed),
               isDark: isDark,
@@ -257,17 +378,33 @@ class _GlassSidebar extends StatelessWidget {
               const SizedBox(height: 8),
 
               // ── Items de navegación ───────────────────────────────────
-              ...List.generate(tabs.length, (i) {
-                final tab = tabs[i];
-                final selected = i == currentIndex;
-                return _SidebarItem(
-                  icon: selected ? tab.activeIcon : tab.icon,
-                  label: tab.label,
-                  selected: selected,
+              // `dividerBefore` agrega una línea + espacio antes del item
+              // (excepto si es el primero, donde no tiene sentido). Lo usan
+              // los tabs SII y Perfil para crear secciones visuales.
+              for (int i = 0; i < tabs.length; i++) ...[
+                if (i > 0 && tabs[i].dividerBefore) ...[
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: collapsed ? 10 : 16),
+                    child: Divider(
+                      height: 1,
+                      thickness: 0.5,
+                      color: Colors.white.withAlpha(isDark ? 40 : 90),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _SidebarItem(
+                  icon: i == currentIndex
+                      ? tabs[i].activeIcon
+                      : tabs[i].icon,
+                  label: tabs[i].label,
+                  selected: i == currentIndex,
                   collapsed: collapsed,
                   onTap: () => onTabSelected(i),
-                );
-              }),
+                ),
+              ],
             ],
           ),
         ),
@@ -464,12 +601,21 @@ class _SidebarItem extends StatelessWidget {
 // ── Tab descriptor ────────────────────────────────────────────────────────────
 
 class _TabItem {
+  /// Índice de la branch en `StatefulShellRoute.indexedStack`. Es distinto del
+  /// índice visual del tab porque el sidebar reordena (Perfil al final) y
+  /// oculta los tabs SII para profesores.
+  final int branchIndex;
   final IconData icon;
   final IconData activeIcon;
   final String label;
+  /// Si true, el sidebar dibuja un separador (línea + espacio) encima.
+  /// Solo aplica al sidebar web — el `NavigationBar` móvil lo ignora.
+  final bool dividerBefore;
   const _TabItem({
+    required this.branchIndex,
     required this.icon,
     required this.activeIcon,
     required this.label,
+    this.dividerBefore = false,
   });
 }

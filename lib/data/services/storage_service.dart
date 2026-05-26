@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -33,15 +35,43 @@ class StorageService {
     return '$base?t=${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  /// Sube el avatar de un usuario a Supabase.
+  /// Sube el avatar de un usuario a Supabase desde un XFile.
   Future<String> uploadUserAvatar(String uid, XFile xfile) async {
-    final path = 'avatars/$uid.jpg';
     final bytes = await xfile.readAsBytes();
+    return uploadUserAvatarBytes(uid, bytes);
+  }
+
+  /// Sube el avatar de un usuario a Supabase desde bytes ya cargados.
+  /// Útil para fuentes que no pasan por XFile (p.ej. decodificación de
+  /// base64 del SII), evitando el round-trip XFile.fromData → readAsBytes
+  /// que en web puede fallar silenciosamente.
+  Future<String> uploadUserAvatarBytes(String uid, Uint8List bytes) async {
+    final path = 'avatars/$uid.jpg';
     await _storage.from(_bucket).uploadBinary(
           path,
           bytes,
           fileOptions: const FileOptions(
             contentType: 'image/jpeg',
+            upsert: true,
+          ),
+        );
+    final base = _storage.from(_bucket).getPublicUrl(path);
+    return '$base?t=${DateTime.now().millisecondsSinceEpoch}';
+  }
+
+  /// Sube el CV en PDF de una solicitud de asesoría. Devuelve la URL pública.
+  ///
+  /// El [tempKey] permite subir el PDF ANTES de que exista el doc en Firestore
+  /// (típicamente el uid del asesor + un timestamp). Una vez creado el doc,
+  /// la URL queda guardada en `Asesoria.cvUrl` — no movemos el archivo, la
+  /// ruta original sigue válida.
+  Future<String> uploadAsesoriaCv(String tempKey, Uint8List bytes) async {
+    final path = 'asesorias/cvs/$tempKey.pdf';
+    await _storage.from(_bucket).uploadBinary(
+          path,
+          bytes,
+          fileOptions: const FileOptions(
+            contentType: 'application/pdf',
             upsert: true,
           ),
         );
