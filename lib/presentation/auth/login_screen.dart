@@ -1,5 +1,4 @@
 import 'dart:ui';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -409,10 +408,13 @@ class _GlassFormCard extends StatelessWidget {
                       fontSize: 10.5, color: Colors.white38),
                 ),
               ),
-              // ── Botón DEV (solo en builds debug) ───────────────────
-              // Para crear cuentas de prueba sin pasar por SII. En release
-              // el `if (kDebugMode)` lo recorta del bundle por completo.
-              if (kDebugMode) ...[
+              // ── Botón DEV ────────────────────────────────────────────
+              // TEMPORAL: visible también en release durante la presentación
+              // del proyecto para facilitar la prueba de cuentas de alumno
+              // sin credenciales reales del SII. Tras la presentación,
+              // volver a envolver este bloque en `if (kDebugMode) ...[`
+              // para excluirlo del bundle de producción.
+              ...[
                 const SizedBox(height: 16),
                 Container(
                   width: double.infinity,
